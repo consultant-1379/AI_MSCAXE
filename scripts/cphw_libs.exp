@@ -1,0 +1,3603 @@
+#!/usr/bin/env expect 
+###########################################################################
+# SCRIPT:   cphw_libs.exp
+# AUTHOR:   xmanpha
+# DATE:     25-May-2022 
+# REV:      2.0
+# PURPOSE:  Expect library to communicate to APG
+#
+###########################################################################
+
+set local_host   "[exec hostname]"
+set host_prompt  "(.*)\r\n\r\n(.*>)$"
+set ftp_prompt   "(.*)(sftp> )$"
+set mml_prompt   "(.*)(<)"
+set cpt_prompt   "(.*)(cpt)(.*)<"
+set node_prompt  "(.*)(\r\ncpub)(.*:.*#)|(.*)(\r\ncpub)(.*:.*#)(.*)$"
+
+##########################################################################
+# Name: calling_proc()
+# Desc: saving way to catch error from called procedure
+# Args: 
+#       proc_name: procedure name
+#       host_db:   see telnet_open()
+#       args:      extra insend_user
+#
+# Return: terminate process when error happens
+#########################################################################
+proc calling_proc { proc_name host_db args } {
+   upvar $host_db remote_db 
+   # Execute procedure  
+   if [ catch {eval $proc_name remote_db $args} err_code ] {
+      send_user "\n ERROR: $err_code\n"
+      exit 1
+   }	  
+}
+
+#########################################################################
+# Name: telnet_cpub()
+# Desc: telnet a cpub
+# Args: remote_db
+#########################################################################
+proc telnet_cpub { host_db args } {
+   upvar $host_db remote_db
+   set spawn_id $remote_db(pid)
+   #puts "\n  $remote_db  \n"
+   set cpub_ip [expr {$remote_db(SB) eq "B"? "192.168.169.57" : "192.168.169.56"}]
+   # Start telnet session
+   send "telnet $cpub_ip\r"
+
+   set timeout $remote_db(timeout)
+   # Start telnet login process
+    expect {
+             # Confirm for ptsei command
+      -re "(.*)(cpub)(.*:.*#)(.*)$" {
+                   }
+      -re "(.*)(cpub)(.*)login:(.*)$|(.*)login:(.*)" {
+          send "root\r"
+          exp_continue
+         }
+      -re "(.*)Escape character is(.*)\r\n" {
+           send "\r"
+           exp_continue
+         }
+      eof {
+         error "telnet_cpub Shutdown in remote host \n"
+      }
+      timeout {
+         error "telnet_cpub Timeout in local host \n"
+      }
+   }
+}
+
+
+#########################################################################
+# Name: telnet_cpub()
+# Desc: telnet a cpub
+# Args: remote_db
+#########################################################################
+#proc telnet_cpub { host_db args } {
+#   upvar $host_db remote_db
+#   set spawn_id $remote_db(pid)
+#   set cpub_ip [expr {$remote_db(SB) eq "B"? "192.168.169.59" : "192.168.169.57"}]
+   # Start telnet session
+#   send "telnet $cpub_ip\r"
+
+#   set timeout $remote_db(timeout)
+   # Start telnet login process
+#    expect {
+             # Confirm for ptsei command
+#      -re "(.*)(cpub)(.*:.*#)(.*)$" {
+#                   }
+#      -re "(.*)(cpub)(.*)login:(.*)$|(.*)login:(.*)" {
+#          send "root\r"
+#          exp_continue
+#         }
+#      -re "(.*)Escape character is(.*)\r\n" {
+#           send "\r"
+#           exp_continue
+#         }
+#      eof {
+#         error "telnet_cpub Shutdown in remote host \n"
+#      }
+#      timeout {
+#         error "telnet_cpub Timeout in local host \n"
+#      }
+#   }
+#}
+
+#########################################################################
+# Name: telnet_BConsole()
+# Desc: open a telnet console session
+# Args: 
+#       1. host_db: 
+#                 data structure stores host info
+#                 hash_table host_db {
+#                    pid:           saved process ID
+#                    timeout:       timeout value
+#                    debug:         control debug msg
+#                    verbose:       control process msg
+#                    addr:          host name/IP address
+#                    user:          user name to login host
+#                    passwd:        password to login host
+#                    host_prompt:   host prompt
+#                    mml_prompt:    mml prompt
+#                    cpt_prompt:    cpt prompt
+#                    node_prompt:   node prompt
+#                 }   
+#       2. args: 
+#                 extra arguments
+#########################################################################
+proc telnet_BCconsole { host_db args } {
+   upvar $host_db remote_db 
+    global local_host
+   set spawn_id $remote_db(pid)
+   #puts "\n  $remote_db  \n"
+   set cpub_ip "192.168.169.61"
+   # Start telnet session
+   send "telnet $cpub_ip\r"
+   
+   # Start telnet session
+   # eval spawn telnet $remote_db(CSport) 
+   # Save telnet process ID
+   # set remote_db(CSpid) $spawn_id
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   # Start telnet login process
+    expect {
+ 	     # Confirm for ptsei command
+      -re "(.*)(cpub)(.*)login:(.*)$|(.*)login:(.*)" {
+          send "root\r"
+          exp_continue
+          }      
+       -re "(.*)Escape character is(.*)\r\n" {
+           send "\r"
+           exp_continue
+           }                 
+   #    -re "(.*)(cpub)(.*:.*#)(.*)$" {
+   #        send "wdCtrl -d\r"
+  #		      }
+        eof {
+              error "telnet_BCConsole Shutdown in remote host \n"
+             }
+        timeout {
+              error "telnet_BCConsole Timeout in local host \n"
+            }
+    }
+  #  expect {
+  #         -re "(.*)(cpub)(.*:.*#) $" { 
+  #           send "\r"                
+  #         }
+  #        timeout {
+  #           error "telnet_BCConsole Timeout in local host \n"
+  #         }
+  #    }        
+}
+
+
+#########################################################################
+# Name: ssh_open()
+# Desc: open a ssh session to remote host
+# Args: see telnet_open()
+#########################################################################
+proc ssh_open { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+   # start ssh connect 
+   if {$remote_db(platform)== "W"} {
+      eval spawn ssh $remote_db(user)@$remote_db(addr) 
+   } else {
+       if {[string length $remote_db(port)] == "0"} {
+          send_user "\n ###ERROR:Missing port number #### \n"
+          exit
+          }    
+       eval spawn ssh -p $remote_db(port) $remote_db(user)@$remote_db(addr)
+    #   eval spawn ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -p $remote_db(port) $remote_db(user)@$remote_db(addr)
+     }
+   # Save ssh process ID
+   set remote_db(pid)  $spawn_id
+   set remote_db(apgpid) $spawn_id
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+   # Start ssh login process
+   expect {
+      -re "continue connecting (yes/no)?" {
+          send "yes\r"
+          exp_continue
+        }      
+      -re "\[Pp]assword: $" {
+         send "$remote_db(pass)\r"
+         exp_continue
+      }
+      -re "$remote_db(host_prompt)" {
+          if {$remote_db(platform)== "L"} {
+             send "su - root\r"
+             expect {
+             -re "Password: $" {
+                 send "$remote_db(rootpass)\r"
+                 exp_continue
+              }
+             -re "$remote_db(host_prompt)" {
+             }
+          }
+        }  
+      }
+      eof {
+         error "ssh_open() Shutdown in remote host <$remote_db(addr)>\n"
+      }
+      timeout {
+         error "ssh_open() Timeout in local host <$local_host>\n"
+      }
+   }
+}
+
+#########################################################################
+# Name: ssh_close()
+# Desc: close a ssh session to remote host
+# Args: see telnet_open()
+#########################################################################
+proc ssh_close { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+   # Connect to ssh process
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+
+   # Close telnet session 
+    send "exit\r"
+   # Wait for ssh EOF
+   expect {
+      -re "$remote_db(host_prompt)" {
+          send "exit \r"
+      }    
+      eof {
+         return "ssh_close() Close ssh session to host <$remote_db(addr)> successfully\n"
+      }
+      timeout {
+         error "ssh_close() Timeout in local host <$local_host>\n"
+      }
+   }
+}
+
+#########################################################################
+# Name: sftp_open()
+# Desc: open a sftp session to remote host
+# Args: see telnet_open()
+#########################################################################
+proc sftp_open { host_db args } {
+   upvar $host_db remote_db
+   global local_host  
+   # Start sftp session
+   eval spawn sftp $remote_db(user)@$remote_db(addr)
+  # eval spawn sftp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no $remote_db(user)@$remote_db(addr)  
+   # Save sftp process ID
+   set remote_db(pid) $spawn_id
+
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   
+   # Start sftp login process
+   expect {
+      -re "\[Pp]assword: $" {
+         send "$remote_db(passwd)\r"
+         exp_continue
+      }
+      -re "$remote_db(ftp_prompt)" {
+      }
+      eof {
+         error "sftp_open() Shutdown in remote host <$remote_db(addr)>\n"
+      }
+      timeout {
+         error "sftp_open() Timeout in local host <$local_host>\n"
+      }
+   }
+}
+
+
+#########################################################################
+# Name: mml_open_ex()
+# Desc: open mml session for single CP or multiple CP
+# Args: see telnet_open()
+#########################################################################
+ proc mml_open_ex {host_db args} {
+   upvar $host_db remote_db
+   global local_host
+
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+   set remote_db(cmd_output) ""
+   # Start mml session
+
+    if {[string match "*CP*" [string toupper $remote_db(cp)]] || [string match "*BC*" [string toupper $remote_db(cp)]]} {
+         send "mml -cp $remote_db(cp) $args\r" 
+    } else {
+        send "mml $args \r"
+     }  
+   # Wait for mml prompt
+   sleep 1
+   expect {
+      -re "$remote_db(host_prompt)" {
+          if {[string match "*CP*" [string toupper $remote_db(cp)]] || [string match "*BC*" [string toupper $remote_db(cp)]]} {
+             send "mml -cp $remote_db(cp) $args\r" 
+          } else {
+             send "mml $args \r"
+            }
+          exp_continue    
+      }    
+      -re "$remote_db(mml_prompt)" {
+          if {[string match "*WO*" $expect_out(0,string)]||[string match "*UNRESTRICTED CP SESSION*" $expect_out(0,string)]} {
+            set remote_db(state) "WO" 
+            append remote_db(cmd_output) "\n" $expect_out(0,string)          
+	         }
+          if {[string match "*EX-*" $expect_out(0,string)]} {
+           set remote_db(state) "SEP"   
+           append remote_db(cmd_output) "\n" $expect_out(0,string)        
+	         }
+          if {[string match "*CP NOT OBTAINABLE *" $expect_out(0,string)]} {
+           set remote_db(state) "NONWO"   
+           append remote_db(cmd_output) "\n" $expect_out(0,string)        
+	         }          
+         }            
+      eof {
+         error "mml_open() Shutdown in remote host <$remote_db(addr)>\n"
+         append remote_db(cmd_output) "\n" $expect_out(0,string)
+      }
+      timeout {
+         error "mml_open() Timeout in local host <$local_host>\n"
+         append remote_db(cmd_output) "\n" $expect_out(0,string)
+      }
+   }  
+}
+
+#########################################################################
+# Name: mml_open()
+# Desc: open mml session from apg
+# Args: see telnet_open()
+#########################################################################
+proc mml_open { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+
+   # Start mml session
+   if { [string length [join $args ""]] } {
+      send "mml [join $args ""]\r"
+   } else {
+      send "mml\r"
+   }
+
+   # Wait for mml prompt
+   expect {
+      -re "$remote_db(host_prompt)" {
+         if { [string length [join $args ""]] } {
+               send "mml [join $args ""]\r"
+         } else {
+              send "mml\r"
+           }
+         exp_continue        
+	  }
+      -re "$remote_db(mml_prompt)" {
+	  }
+      eof {
+         error "mml_open() Shutdown in remote host <$remote_db(addr)>\n"
+      }
+      timeout {
+         error "mml_open() Timeout in local host <$local_host>\n"
+      }
+   }
+}
+ 
+#########################################################################
+# Name: mml_close()
+# Desc: close mml session from apg
+# Args: see telnet_open()
+#########################################################################
+proc mml_close { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+   # Connect to spawned process
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+   # Close mml session 
+   send "exit;\r"
+
+   # Waiting for host prompt
+   expect {
+      -re "(.*)SYSTEM START(.*)" {
+          send "\r"
+          exp_continue
+      } 
+      -re "(.*)(SYSTEM RESTARTED)(.*)(LARGE)(.*)" {
+         sleep 5
+         send "\r"
+         exp_continue
+         }   
+#      -re "$remote_db(mml_prompt)" {
+#          send "exit;\r"
+#          exp_continue
+#      }      
+      -re "$remote_db(host_prompt)" {
+	  }
+      eof {
+         error "mml_close() Close mml session to remote host <$remote_db(addr)> successfully\n"
+      }
+      timeout {
+         error "mml_close() Timeout in local host <$local_host>\n"
+      }
+   }
+}
+
+
+#########################################################################
+# Name: sybup()
+# Desc: open cpt session
+# Args: see telnet_open()
+#########################################################################
+
+proc sybup { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host  
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+
+   # Execute mml command in spawned process   
+   foreach command $args {
+      send "$command;\r"  
+   expect {
+      -re "sybup" {
+		    send ";\r"  
+      }
+      -re "
+      timeout {
+         error " \n sybup does not appear after typing sybup command  <$local_host>\n"
+      }
+   }
+    
+    expect {
+      -re "RELFSW" {
+		    send ";\r"  
+      }
+      
+      -re "FUNCTION BUSY" {
+        exit  
+      }
+      timeout {
+         error " \n RELFSW does not appear after typing confirm  <$local_host>\n"
+      }
+   }   
+      
+   expect {
+      -re "ORDERED" {
+      }
+      timeout {
+         error " \n ORDERED does not appear after typing confirm  <$local_host>\n"
+      }
+   }  
+     
+    expect {
+      -re "<" {
+        send "\004"
+      }
+      timeout {
+         error " \n mml promt does not appear after typing confirm  <$local_host>\n"
+      }
+   }
+   
+   
+   expect {
+      -re "OUTPUT\r\n\r\nEXECUTED\r\nEND(.*)$" {
+        send "\r"
+        exp_continue
+      }
+      -re "<" {
+      }
+      timeout {
+         error " \n mml promt does not appear after typing confirm  <$local_host>\n"
+      }
+   }              
+  } 
+}
+
+#########################################################################
+# Name: recci()
+# Desc: recci exec
+# Args: see telnet_open()
+#########################################################################
+
+proc recci { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set count 0 
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout 
+   set timeout 1200
+   # Execute mml command in spawned process   
+   foreach command $args {
+      send "$command;\r" 
+      expect {
+	     # Sending confirm key for mml commands
+	       -re "RECCI" {
+           puts "\n ###Sleep 10s ### \n"    
+           sleep 10    
+           send ";\r"
+           exp_continue
+         }                
+         -re "MAS ACTIVITY IN PROGRESS" {
+            puts "\n ###Sleep 60s ### \n" 
+            sleep 60
+            send "$command;\r"
+            incr count
+            if {$count==5} {
+               send_user "\n ###ERROR### : Maintenance subsystem has problem \n"
+               exit
+             }
+            exp_continue 
+         }    
+         -re "ORDERED" {
+           } 
+          timeout {
+                  error " \n ORDERED does not appear after typing confirm  <$local_host>\n"
+                  exit
+          }
+         }                 
+     expect {
+        -re "$remote_db(mml_prompt)" {
+         send "\004"
+         }
+        timeout {
+          error " \n mml promt does not appear after typing confirm  <$local_host>\n"
+          exit
+          }
+        }
+                                
+     expect {                  
+         -re "NOT SUCCESSFUL" {
+             sleep 5
+             send "\r"
+             sleep 5
+             expect {
+               -re "$remote_db(mml_prompt)" {
+               }
+             }
+             calling_proc mml_cmd_exec remote_db "lamip"
+             calling_proc mml_cmd_exec remote_db "allip"
+             calling_proc mml_cmd_exec remote_db "syrip:survey"
+             calling_proc mml_cmd_exec remote_db "DIECP:INF=SPO"
+             calling_proc mml_cmd_exec remote_db "DIECP:INF=PAR"
+             calling_proc mml_cmd_exec remote_db "dircp"
+             calling_proc ptcoi_open remote_db
+             calling_proc getSB remote_db "ptwsp" "CPT MESSAGE"
+             calling_proc cpt_cmd_enhance   remote_db   "ptsei:cs=$remote_db(ACT)" "EXECUTED"
+             calling_proc cpt_cmd_enhance   remote_db   "ptsee" "EXECUTED"
+             calling_proc ptcoi_close remote_db
+             
+             
+             send_user " \n ****RECCI FAIL**** \n "
+             exit                          
+         }
+         -re "SUCCESSFUL(.*)END" {
+             send "\r"
+             expect {
+               -re "WO$remote_db(mml_prompt)" {
+               }             
+             }
+            }                 
+        timeout {
+          error " \n timeout for $command <$local_host>\n"
+          exit     
+          } 
+       } 
+    }
+ }
+
+#########################################################################
+# Name: ptcoi_open()
+# Desc: open cpt session
+# Args: see telnet_open()
+#########################################################################
+proc ptcoi_open { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+   set count 0
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+   # Start ptcoi session
+   send "ptcoi;\r"
+    sleep 1     
+      expect {
+          -re "DATA LINK ERROR$remote_db(mml_prompt)| DATA LINK ERROR(.*)(<)(.*)$" {
+              puts "\n#### Sleep 15s #### \n"
+              sleep 15
+              send "ptcoi;\r"            
+              incr count
+              if {$count ==10} {
+                 send_user "\n ###ERROR###:MAUB has problem ,cannot connect cpt \n"
+               exit
+              }
+              exp_continue
+              }
+           -re "CPT ALREADY CONNECTED$remote_db(mml_prompt)" {
+              sleep 2
+              send "ptcoe;\r "
+              sleep 2 
+              expect {
+                     -re "$remote_db(mml_prompt)" {
+                      send "ptcoi;\r" 
+                      }
+                     timeout { 
+                        error " \n ptcoi_open() Timeout \n"      
+                     }                
+                   } 
+              exp_continue
+               }
+           -re "(.*)INTERRUPTED(.*)CLEARED DS\r\n\(.*)\r\n$" {
+               send "\r"
+               expect {
+                     -re "$remote_db(mml_prompt)" {
+                      send "ptcoi;\r" 
+                      }
+                   }
+               exp_continue      
+               }
+          # Confirm if yes appear   
+           -re "CONTINUE(.*)" {
+               sleep 3
+               send "y;\r" 
+                exp_continue                      
+             }
+           
+           -re "EXECUTED$remote_db(cpt_prompt)|(cpt)(.*)(<)|(cpt)(.*)(<)$" {
+              if {$remote_db(track)==60} {   
+                 calling_proc cpt_cmd_enhance   remote_db   "ptamr" "EXECUTED"
+                }                      
+             } 
+           -re "SYSTEM RESTARTED(.*)$ | SYSTEM RELOAD(.*)$" {
+               send "\r"
+               exp_continue
+           }      
+           -re "$remote_db(mml_prompt)|(.*)(<)(.*)$" {
+               sleep 15
+               send "ptcoi;\r"
+               exp_continue 
+               }             
+          eof {
+               error "ptcoi_open() Shutdown in remote host <$remote_db(addr)>\n"
+                }
+          timeout {
+               error "ptcoi_open() Timeout in local host <$local_host>\n"
+               } 
+      } 
+      sleep 3  
+}
+
+#########################################################################
+# Name: ptcoi_close()
+# Desc: close cpt session
+# Args: see telnet_open()
+#########################################################################
+proc ptcoi_close { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+   
+   # Connect to spawned process
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+   set count 0
+   # Close ptcoi session 
+   send "ptcoe;\r"
+   sleep 2
+   # Waiting for mml prompt
+   set time_start [clock seconds]
+   
+   expect {        
+      -re "(.*)(SYSTEM RESTARTED)(.*)(LARGE)(.*)" {
+         sleep 5
+         send "\r"
+         exp_continue
+         }
+     -re "$remote_db(cpt_prompt)" {
+         send "ptcoe;\r"
+         exp_continue
+     }
+     -re "(SYSTEM RESTARTED)(.*)(SYSTEM START)(.*)$" {
+         send "\r"
+         exp_continue
+     } 
+     -re "(.*)(SYSTEM RESTARTED)(.*)(CLEARED DS)(.*)$" {
+         sleep 5
+         send "\r"
+         exp_continue
+         }
+     -re "(.*)CONNECTION INTERRUPTED(.*)$" {
+         puts "\n ### Sleep 20s ###"
+         sleep 20
+         send "\r"        
+         exp_continue
+       }
+     -re "$remote_db(mml_prompt)" {   
+	  }   
+      eof {
+         error "ptcoi_close() Close mml session to remote host <$remote_db(addr)> successfully\n"
+      }
+      timeout {
+         error "ptcoi_close() Timeout in local host <$local_host>\n"
+      }
+   }
+}
+
+#########################################################################
+# Name: syscon_connect()
+# Desc: connect syscon session
+# Author :xmanpha
+# Args: see telnet_open()
+#########################################################################
+proc syscon_connect { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+   global expect_out
+   set cmdLog "t"
+   set lTemp "5"
+   set  cnt "0"
+   set  newStr "6"
+   set iplist "9"
+   set  ipMAU "8"
+   set i "0"
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   set bkid $spawn_id
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+   
+   # Start syscon session
+    #send "syscon;\r"
+   #calling_proc ptcoi_close remote_db
+    #calling_proc  mml_close  remote_db
+    #sleep 5
+   send "syscon -a -s b;\r"
+   #sleep 1
+   # send "\x5E5D;\r"
+   # calling_proc cpu_cmd_exec remote_db	
+
+   # Wait for syscon prompt
+   expect {
+      -re "(.*)TIMEOUT IN CPU\r\n\r\n" {
+          send "exit;\r"
+          expect {
+             -re "$remote_db(cpt_prompt)" {
+               if {$i==3} {
+                  send_user "\n #### Try restart cold MAUB\n "
+                  calling_proc ptcoi_close remote_db
+                  calling_proc  mml_close  remote_db
+                  calling_proc  RestartMAU remote_db
+                  calling_proc mml_open_ex   remote_db
+                  calling_proc ptcoi_open remote_db
+                  calling_proc cpt_cmd_enhance   remote_db   "ptamr" "EXECUTED"
+                  calling_proc cpt_cmd_enhance   remote_db   "ptses" "EXECUTED"
+                  calling_proc cpt_cmd_enhance   remote_db   "ptcpr" "EXECUTED"  
+                  
+              
+                  }
+		  
+		  send "syscon;\r"   
+                }                                                            
+             }
+           incr i
+           if {$i==5} {
+              send_user "\n ###ERROR###: Cannot connect syscon \n "             
+              exit
+            }
+           exp_continue
+      }               
+      -re "DATA LINK ERROR$remote_db(mml_prompt)|DATA LINK ERROR(.*)(<)(.*)$ | DATA LINK ERROR(.*)$" {
+          set remote_db(upmau) "1" 
+          calling_proc cpt_send_enter remote_db 2         
+          calling_proc  mml_close  remote_db
+          if {$cnt ==0} { 
+          calling_proc  apg_cmd_enhance remote_db "hwcls" "HARDWARE CONFIGURATION"
+          set cmdLog $expect_out(buffer)            
+          set lTemp [split $cmdLog "\r\n"]
+          set cnt [lsearch $lTemp *MAUB*]
+          set newStr [join [lindex $lTemp $cnt] " "]
+          set iplist [split $newStr " "]
+          set ipMAU  [lindex $iplist 5]
+          incr cnt 
+          }
+          # ping to check MAU up
+          sleep 30
+          calling_proc pingMAU  remote_db "$ipMAU" 
+          # reconnect syscon
+          calling_proc mml_open_ex   remote_db
+          calling_proc ptcoi_open remote_db
+          calling_proc cpt_cmd_enhance   remote_db   "ptses" "EXECUTED"
+          send "syscon;\r"                           
+          exp_continue 
+        }
+        -re "(.*)UNRESTRICTED CP SESSION(.*)$" {
+           send "\r"
+           exp_continue 
+        }                 
+        -re "INTERRUPTED(.*)$" {
+            send_user "\n------- CATCHED INTERRUPTED , SLEEP 40s -----------\n"
+            sleep 40
+            calling_proc ptcoi_open remote_db
+            calling_proc cpt_cmd_enhance   remote_db   "ptses" "EXECUTED" 
+            calling_proc cpt_cmd_enhance   remote_db   "ptwsp" "CPT MESSAGE"
+            send "syscon;\r"
+            exp_continue
+            }    
+        -re "(.*)Label used(.*)(\r\ncpub)(.*:.*#)|(.*)Label used(.*)(\r\ncpub)(.*:.*#)(.*)$|(.*)Label used(.*)(\r\ncpub)(.*:.*#)(.*)SKA:(.*)$" {
+            send "\r"
+        }  
+   }
+}        
+
+
+#########################################################################
+# Name: syscon_close()
+# Desc: close syscon session
+# Args: see telnet_open()
+#########################################################################
+proc syscon_close { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+   # Close syscon session 
+  # send "exit;\r"
+   send "\x135\r" 
+   # Waiting for cpt prompt
+   expect {
+     -re "$remote_db(node_prompt)" {
+         send "exit;\r"
+         exp_continue
+        } 
+      -re "$remote_db(cpt_prompt)" {
+	  }
+      eof {
+         error "syscon_close() Close mml session to remote host <$remote_db(addr)> successfully\n"
+      }
+      timeout {
+         error "syscon_close() Timeout in local host <$local_host>\n"
+      }
+   }
+}
+
+
+#########################################################################
+# Name: telnet_close()
+# Desc: close telnet session
+# Args: see telnet_open()
+#########################################################################
+proc telnet_close { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+
+   # Close telnet session 
+   send "exit;\r"
+
+   # Waiting for apg prompt
+   expect {
+      -re "Connection closed by foreign host" {
+          }
+      timeout {
+         error "telnet_close() Timeout in local host <$local_host>\n"
+      }
+   }
+}
+
+
+#########################################################################
+# Name: srm_open()
+# Desc: open srm session
+# Args: see telnet_open()
+#########################################################################
+proc srm_open { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+
+   # Start syscon session
+   send "srm;\r"
+
+   # Wait for syscon prompt
+   expect {
+      -re "SRM Mode" {
+		 send "\r"
+		 exp_continue	     
+	  }
+      -re "login:$" {
+		 send "root\r"
+		 exp_continue	     
+	  }	  
+      -re "$remote_db(node_prompt)" {
+	  }
+      eof {
+         error "srm_open() Shutdown in remote host <$remote_db(addr)>\n"
+      }
+      timeout {
+         error "srm_open() Timeout in local host <$local_host>\n"
+      }
+   } 
+}
+
+#########################################################################
+# Name: srm_close()
+# Desc: close srm session
+# Args: see telnet_open()
+#########################################################################
+proc srm_close { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+
+   # Close syscon session 
+   send "exit;\r"
+
+   # Waiting for cpt prompt
+   expect {
+      -re "$remote_db(cpt_prompt)" {
+	  }
+      eof {
+         error "srm_close() Close mml session to remote host <$remote_db(addr)> successfully\n"
+      }
+      timeout {
+         error "srm_close() Timeout in local host <$local_host>\n"
+      }
+   }
+}
+
+#########################################################################
+# Name: mp_open()
+# Desc: open mp session
+# Args: see telnet_open()
+#########################################################################
+proc mp_open { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+
+   # Start syscon session
+   send "mp;\r"
+
+   # Wait for syscon prompt
+   expect {
+      -re "$remote_db(node_prompt)" {
+	  }
+      eof {
+         error "mp_open() Shutdown in remote host <$remote_db(addr)>\n"
+      }
+      timeout {
+         error "mp_open() Timeout in local host <$local_host>\n"
+      }
+   } 
+}
+
+#########################################################################
+# Name: mp_close()
+# Desc: close mp session
+# Args: see telnet_open()
+#########################################################################
+proc mp_close { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+
+   # Close syscon session 
+   send "exit;\r"
+
+   # Waiting for cpt prompt
+   expect {
+      -re "$remote_db(cpt_prompt)" {
+	  }
+      eof {
+         error "mp_close() Close mml session to remote host <$remote_db(addr)> successfully\n"
+      }
+      timeout {
+         error "mp_close() Timeout in local host <$local_host>\n"
+      }
+   }
+}
+
+
+
+#########################################################################
+# Name: mml_cmd_enhance()
+# Desc: run mml command
+# Args: see telnet_open()
+#########################################################################
+proc mml_cmd_enhance { host_db command strCheck } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   # Execute mml command in spawned process
+   for {set i 0} {$i <= 3} {incr i} {
+      set remote_db(cmd_output) "" 
+      send "$command;\r"
+      expect {
+  	     # Sending confirm key for mml commands
+  	     -re "(DPSES|DPPAI|DPSWI|SASTS|FCMWI|FCSEI;|RECCI|SYBUP:FILE|SYATI:RESTART)$remote_db(mml_prompt)" {
+             sleep 5 
+  		       send ";\r"              
+             append remote_db(cmd_output) "\n" $expect_out(0,string)
+             exp_continue
+  		    }     
+        -re "(.*)(ORDERED\r\n\r\n\)$remote_db(mml_prompt)" {
+            sleep 5 
+            send "\004"
+            append remote_db(cmd_output) "\n" $expect_out(0,string)
+            exp_continue
+        }
+        -re "(.*)END(.*)|(.*)RANK(.*)LARGE(.*)$" {
+            sleep 5            
+            send "\r"
+            sleep 5
+            append remote_db(cmd_output) "\n" $expect_out(0,string)
+            exp_continue
+        }
+        full_buffer {
+             append remote_db(cmd_output) "\n" $expect_out(buffer)
+             exp_continue          
+           }
+        -re "ILLEGAL CP STATE$remote_db(mml_prompt)" {
+            send_user "Wrong input or system does not permit"
+            exit
+        }
+        -re "(.*)\r\n\r\n$remote_db(mml_prompt)" {
+            append remote_db(cmd_output) "\n" $expect_out(0,string)
+            }
+        -re "$remote_db(mml_prompt)" {
+            append remote_db(cmd_output) "\n" $expect_out(0,string)
+           }  
+        timeout {
+              error "mml_cmd_exec() Timeout in local host <$local_host>\n"
+           }   
+       }
+        
+       sleep 1 
+       set blnstate [string match "*$strCheck*" $remote_db(cmd_output)]
+      
+      ##continue if command output right
+       if {$blnstate == "1"} {
+          break                
+        }
+      ## exit program if cannot find strCheck
+      if {$i==3} {
+         send_user "\n ####Error : ^^^^^^ Don't find $strCheck in \t $remote_db(cmd_output) ^^^^^^^#### \n"
+         exit
+       }       
+       
+    }   
+}       
+
+
+#########################################################################
+# Name: mml_cmd_exec()
+# Desc: run mml command
+# Args: see telnet_open()
+#########################################################################
+
+proc mml_cmd_exec { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   set remote_db(cmd_output) ""
+   # Execute mml command in spawned process
+   foreach command $args {  
+      send "$command;\r"
+      expect {
+  	     # Sending confirm key for mml commands
+  	     -re "(DPSES|DPPAI|DPSWI|FCSEI;|RECCI|SYBUP:FILE|SYATI:RESTART)$remote_db(mml_prompt)" {
+             sleep 5 
+  		       send ";\r"              
+             append remote_db(cmd_output) "\n" $expect_out(0,string)
+             exp_continue
+  		    }     
+        -re "(.*)(ORDERED\r\n\r\n\)$remote_db(mml_prompt)" {
+            sleep 5 
+            send "\004"
+            append remote_db(cmd_output) "\n" $expect_out(0,string)
+            exp_continue
+        }
+        -re "(.*)END(.*)|(.*)RANK(.*)LARGE(.*)$" {
+            sleep 5            
+            send "\r"
+            sleep 5
+            append remote_db(cmd_output) "\n" $expect_out(0,string)
+            exp_continue
+        }
+        -re "ILLEGAL CP STATE$remote_db(mml_prompt)" {
+            send_user "Wrong input or system does not permit"
+            exit
+        }
+        -re "\r\n\r\n$remote_db(mml_prompt)" {
+            append remote_db(cmd_output) "\n" $expect_out(0,string)
+            }
+        -re "$remote_db(mml_prompt)" {
+            append remote_db(cmd_output) "\n" $expect_out(0,string)
+           }  
+        timeout {
+              error "mml_cmd_exec() Timeout in local host <$local_host>\n"
+           }   
+       } 
+    }   
+}       
+
+
+#########################################################################
+# Name: cpt_ordered()
+# Desc: run cpt command
+# Author : xmanpha
+# Args: see telnet_open()
+#########################################################################
+
+proc cpt_ordered { host_db command strCheck} {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set count "0"
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+
+   # Execute cpt command in spawned process 
+   for {set i 0} {$i <= 6} {incr i} {
+      set count "0"
+      set remote_db(cmd_output) ""   
+   
+        
+#      foreach command $args {
+         # Ignore ptcoe command
+         if { [string compare $command "ptcoe"] == 0 } { continue }
+   	  
+         send "$command;\r"
+         expect {
+            -re "(.*)CONTINUE" {
+                send "y;\r"
+                append remote_db(cmd_output) "\n" $expect_out(buffer)
+                exp_continue
+                }
+            -re "ORDERED\r\n$remote_db(cpt_prompt)" {
+                 send "\004"
+                 sleep 3
+                 send "\004"
+                 append remote_db(cmd_output) "\n" $expect_out(buffer)
+                exp_continue    
+              }
+            -re "TIMEOUT IN MAU OR CPU" {
+               sleep 20
+               send "\r"
+               sleep 5
+               send  "$command;\r"
+               incr count
+               if {$count==3} {
+                  send_user "\n ###ERROR###: TIMEOUT IN MAU OR CPU . Should have intervention manually "
+                  exit
+                }
+               append remote_db(cmd_output) "\n" $expect_out(buffer)  
+               exp_continue
+              }  
+            -re "(.*)FINISHED\r\n\r\nEND\r\n(.*)" {
+                 sleep 3 
+                 send "\r"
+                 append remote_db(cmd_output) "\n" $expect_out(buffer) 
+                 exp_continue     
+             } 
+            full_buffer {
+                 append remote_db(cmd_output) "\n" $expect_out(buffer)
+                 exp_continue          
+                 }             
+            -re "$remote_db(cpt_prompt)|$remote_db(cpt_prompt)(.*)$" { 
+                 append remote_db(cmd_output) "\n" $expect_out(0,string)                    
+              }
+           -re "INTERRUPTED(.*)OTHER(.*)$" {
+               send_user "\n------- CATCHED OTHER INTERRUPTED -----------\n"
+               calling_proc ptcoi_open remote_db
+               append remote_db(cmd_output) "\n" $expect_out(buffer)
+               exp_continue
+              }         
+            timeout {
+                error " \n ORDERED does not appear after typing confirm  <$local_host>\n"
+              } 
+          }       
+#       }
+       sleep 2
+        
+       set blnstate [string match "*$strCheck*" $remote_db(cmd_output)]
+        ##continue if command output right
+        if {$blnstate == "1"} {
+          break                
+          }
+        ## exit program if cannot find strCheck
+        if {$i==6} {
+           send_user "\n ####Error : ^^^^^^ Don't find $strCheck in \t $remote_db(cmd_output) ^^^^^^^#### \n"
+           exit
+         }             
+    } 
+}
+
+
+#########################################################################
+# Name: cpt_cmd_enhance()
+# Desc: run cpt command
+# Args: see telnet_open()
+#########################################################################
+proc cpt_cmd_enhance { host_db command strCheck } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   # Execute cpt command in spawned process   
+   
+   
+   for {set i 0} {$i <= 6} {incr i} {
+      set count "0"
+      set remote_db(cmd_output) ""
+      set time_start [clock seconds]
+      # Ignore ptcoe command
+      if { [string compare $command "ptcoe"] == 0 } { continue } 
+      send  "$command;\r"
+    #  puts "\n command is $command" 
+      sleep 1       
+      expect {
+      
+     	     # Confirm for ptsei command
+     		 -re "(CONTINUE WITH COMMAND TOWARDS EXECUTIVE CP)(.*:)$" {
+     		    send "y;\r"
+             append remote_db(cmd_output) "\n" $expect_out(0,string)    
+     			  exp_continue
+     		   }
+         -re "COMMAND NOT SUCCESSFULLY COMPLETED$remote_db(cpt_prompt)" {
+              sleep 5
+              send "\r"
+              sleep 5
+              send  "$command;\r"
+              incr count
+              if {$count==5} {
+                 send_user "\n ###ERROR###: TIMEOUT IN MAU OR CPU or COMMAND NOT SUCCESSFULLY COMPLETED . Should have intervention manually "
+                 exit
+               }
+              append remote_db(cmd_output) "\n" $expect_out(0,string)  
+              exp_continue
+            }  
+         full_buffer {
+             append remote_db(cmd_output) "\n" $expect_out(buffer)
+             exp_continue          
+           }     
+         -re "$remote_db(cpt_prompt)" {
+              append remote_db(cmd_output) "\n" $expect_out(0,string)
+     		   }
+        -re "INTERRUPTED(.*)OTHER(.*)$" {
+            send_user "\n------- CATCHED OTHER INTERRUPTED -----------\n"
+            calling_proc ptcoi_open remote_db
+            exp_continue
+            }             
+         eof {
+                  error "cpt_cmd_enhance() Shutdown in remote host <$remote_db(addr)>\n"
+              }
+         timeout {
+                 error "cpt_cmd_enhance() Timeout in local host <$local_host>\n"
+              }
+           }
+     sleep 2
+     
+     set blnstate [string match "*$strCheck*" $remote_db(cmd_output)]
+      
+      ##continue if command output right
+      if {$blnstate == "1"} {
+        break                
+        }
+      ## exit program if cannot find strCheck
+      if {$i==6} {
+         send_user "\n ####Error : ^^^^^^ Don't find $strCheck in \t $remote_db(cmd_output) ^^^^^^^#### \n"
+         exit
+       }            
+   }
+}
+
+
+
+#########################################################################
+# Name: cpt_send_enter()
+# Desc: run cpt command
+# Args: see telnet_open()
+#########################################################################
+proc cpt_send_enter { host_db number } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+    
+   # Execute cpt command in spawned process   
+   
+   
+   for {set i 0} {$i <= $number} {incr i} {   
+      send "\r \r"
+      sleep 1            
+   }
+   
+#   expect {      
+#         -re "$remote_db(cpt_prompt)" {
+#              append remote_db(cmd_output) "\n" $expect_out(0,string)
+#     		   }
+#      }
+}
+
+
+
+#########################################################################
+# Name: cpt_cmd_exec()
+# Desc: run cpt command
+# Args: see telnet_open()
+#########################################################################
+proc cpt_cmd_exec { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set count "0"
+   set countE 0
+   set remote_db(cmd_output) ""
+   set time_start [clock seconds]
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   # Execute cpt command in spawned process   
+   foreach command $args {
+      # Ignore ptcoe command
+      if { [string compare $command "ptcoe"] == 0 } { continue } 
+    #  puts "\n spawnid is $spawn_id"
+      send  "$command;\r"
+    #  puts "\n command is $command" 
+     # puts "\n HHHHHHHHHHHHHHHHHHHHHHHHHHH \n" 
+      sleep 1       
+      expect {
+	     # Confirm for ptsei command
+		 -re "(CONTINUE WITH COMMAND TOWARDS EXECUTIVE CP)(.*:)$" {
+		    send "y;\r"
+        append remote_db(cmd_output) "\n" $expect_out(0,string)    
+			  exp_continue
+		 }
+     -re "COMMAND NOT SUCCESSFULLY COMPLETED$remote_db(cpt_prompt)" {
+         sleep 5
+         send "\r"
+         sleep 5
+         send  "$command;\r"
+         incr count
+         if {$count==5} {
+            send_user "\n ###ERROR###: TIMEOUT IN MAU OR CPU or COMMAND NOT SUCCESSFULLY COMPLETED . Should have intervention manually "
+            exit
+          }
+         append remote_db(cmd_output) "\n" $expect_out(0,string)  
+         exp_continue
+     }     
+     -re "$remote_db(cpt_prompt)" {
+         append remote_db(cmd_output) "\n" $expect_out(0,string)
+		 }
+     -re "INTERRUPTED(.*)OTHER(.*)$" {
+            send_user "\n------- CATCHED OTHER INTERRUPTED -----------\n"
+            calling_proc ptcoi_open remote_db
+            exp_continue
+            }             
+     eof {
+            error "cpt_cmd_exec() Shutdown in remote host <$remote_db(addr)>\n"
+         }
+     timeout {
+            error "cpt_cmd_exec() Timeout in local host <$local_host>\n"
+         }
+      }
+     sleep 2 
+   }
+}
+
+
+#########################################################################
+# Name: pcih_open()
+# Desc: open pcih session
+# Args: see telnet_open()
+#########################################################################
+proc pcih_open { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+
+   # Start syscon session
+   send "pcih;\r"
+
+   # Wait for syscon prompt
+   expect {
+      -re "$remote_db(node_prompt)" {
+	  }
+      eof {
+         error "pcih_open() Shutdown in remote host <$remote_db(addr)>\n"
+      }
+      timeout {
+         error "pcih_open() Timeout in local host <$local_host>\n"
+      }
+   } 
+}
+
+#########################################################################
+# Name: pcih_close()
+# Desc: close pcih session
+# Args: see telnet_open()
+#########################################################################
+proc pcih_close { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+
+   # Close syscon session 
+   send "exit;\r"
+
+   # Waiting for cpt prompt
+   expect {
+      -re "$remote_db(cpt_prompt)" {
+	  }
+      eof {
+         error "pcih_close() Close mml session to remote host <$remote_db(addr)> successfully\n"
+      }
+      timeout {
+         error "pcih_close() Timeout in local host <$local_host>\n"
+      }
+   }
+}
+
+#########################################################################
+# Name: apg_cmd_enhance()
+# Desc: run window command on remote host
+# Args: see telnet_open()
+#########################################################################
+proc apg_cmd_enhance { host_db command strCheck } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   # Execute window command in spawned process
+   for {set i 0} {$i <= 3} {incr i} {
+      set remote_db(cmd_output) "" 
+      send "$command\r"              
+      expect {
+	     # Confirm pattern for cfeted command
+	     -re "Warning: New and current configurations are equal(.*): $" {
+           if {[string toupper $remote_db(TR)]=="HT"} {           
+   		       send "n\r"
+           } 
+           if {[string toupper $remote_db(TR)]=="RN"} {           
+   		       send "y\r"
+           }
+           append remote_db(cmd_output) "\n" $expect_out(0,string)   
+   			   exp_continue
+		      }
+       full_buffer {
+             append remote_db(cmd_output) "\n" $expect_out(buffer)
+             exp_continue          
+           }          
+       -re "$remote_db(host_prompt)" {
+           append remote_db(cmd_output) "\n" $expect_out(0,string)   
+          }
+       eof {
+            error "apg_cmd_exec() Shutdown in remote host <$remote_db(addr)>\n"
+         }
+       timeout {
+            error "apg_cmd_exec() Timeout in local host <$remote_db(addr)>\n"
+         }
+      }
+      sleep 1
+       set blnstate [string match "*$strCheck*" $remote_db(cmd_output)]
+      
+      ##continue if command output right
+      if {$blnstate == "1"} {
+          break                
+        }
+      ## exit program if cannot find strCheck
+      if {$i==3} {
+         send_user "\n ####Error : ^^^^^^ Don't find $strCheck in \t $remote_db(cmd_output) ^^^^^^^#### \n"
+         exit
+       }                        
+   }
+}
+
+#########################################################################
+# Name: apg_cmd_exec()
+# Desc: run window command on remote host
+# Args: see telnet_open()
+#########################################################################
+proc apg_cmd_exec { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set remote_db(cmd_output) ""
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   # Execute window command in spawned process
+   foreach command $args {
+      send "$command\r"              
+      expect {
+	     # Confirm pattern for cfeted command
+	     -re "Warning: New and current configurations are equal(.*): $" {
+           if {[string toupper $remote_db(TR)]=="HT"} {           
+   		       send "n\r"
+           } 
+           if {[string toupper $remote_db(TR)]=="RN"} {           
+   		       send "y\r"
+           }
+          append remote_db(cmd_output) "\n" $expect_out(0,string)   
+   			  exp_continue
+		 }
+         -re "$remote_db(host_prompt)" {
+           append remote_db(cmd_output) "\n" $expect_out(0,string)   
+         }
+         eof {
+            error "apg_cmd_exec() Shutdown in remote host <$remote_db(addr)>\n"
+         }
+         timeout {
+            error "apg_cmd_exec() Timeout in local host <$local_host>\n"
+         }
+      }
+   }
+}
+
+#########################################################################
+# Name: apg_ex_enhance()
+# Desc: run window command on remote host
+# Args: see telnet_open()
+#########################################################################
+proc apg_ex_enhance { host_db command strCheck } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+ 
+   # Execute window command in spawned process 
+   for {set i 0} {$i <= 3} {incr i} {
+      set remote_db(cmd_output) "" 
+      if {[string match "*CP*" [string toupper $remote_db(cp)]] || [string match "*BC*" [string toupper $remote_db(cp)]]} {
+           if {[llength $command] == 1} {
+             if {[string match "*CPFLS*" [string toupper $command]] && [string match "*BC*" [string toupper $remote_db(cp)]]} {
+                send "$command -cp cluster \r"
+              } else {
+                     send "$command -cp $remote_db(cp) \r"
+               } 
+           } else {
+               if {[string match "*BUPIDLS*" [string toupper $command]] && [string match "*BC*" [string toupper $remote_db(cp)]]} {
+                  set commandEX [linsert $command 1 -cp cluster]  
+               } else {
+                      set commandEX [linsert $command 1 -cp $remote_db(cp)] 
+               }
+              send "$commandEX \r" 
+           }
+       } else {
+           sleep 5
+           send "$command \r"
+       }   
+      expect {
+   	     # Confirm pattern for cfeted command    	     
+          -re "(.*)do you want to continue anyway(.*):" {
+              if {[string toupper $remote_db(TR)]=="HT"} {           
+      		       send "n\r"
+              } 
+              if {[string toupper $remote_db(TR)]=="RN"} {           
+      		       send "y\r"
+              }            
+             append remote_db(cmd_output) "\n" $expect_out(0,string)    
+     			  exp_continue
+   		    }   
+          -re "(.*)(ORDERED)$remote_db(host_prompt)" {
+              sleep 2
+              send "\004"
+              sleep 5
+              append remote_db(cmd_output) "\n" $expect_out(0,string)
+              exp_continue
+            }
+          -re "$remote_db(host_prompt)" {
+              append remote_db(cmd_output) "\n" $expect_out(0,string)
+            } 
+           full_buffer {
+             append remote_db(cmd_output) "\n" $expect_out(buffer)
+             exp_continue          
+           }                   
+            eof {
+               error "apg_cmd_exec() Shutdown in remote host <$remote_db(addr)>\n"
+            }
+            timeout {
+               error "apg_cmd_exec() Timeout in local host <$remote_db(addr)>\n"
+            }
+         }
+         sleep 1 
+         set blnstate [string match "*$strCheck*" $remote_db(cmd_output)]       
+        ##continue if command output right
+         if {$blnstate == "1"} {
+            break                
+          }
+        ## exit program if cannot find strCheck
+        if {$i==3} {
+           send_user "\n ####Error : ^^^^^^ Don't find $strCheck in \t $remote_db(cmd_output) ^^^^^^^#### \n"
+           exit
+         }                     
+     }     
+}
+
+
+#########################################################################
+# Name: apg_ex_exec()
+# Desc: run window command on remote host
+# Args: see telnet_open()
+#########################################################################
+proc apg_ex_exec { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   set remote_db(cmd_output) ""  
+   # Execute window command in spawned process 
+    if {[string match "*CP*" [string toupper $remote_db(cp)]] || [string match "*BC*" [string toupper $remote_db(cp)]]} {
+        if {[llength $args] == 1} {
+         send "$args -cp $remote_db(cp) \r" 
+        } else {
+        set command [linsert $args 1 -cp $remote_db(cp)] 
+        send "$command \r" 
+        }
+    } else {
+        sleep 5
+        send "$args \r"
+     }
+          
+expect {
+	     # Confirm pattern for cfeted command    	     
+       -re "(.*)do you want to continue anyway(.*):" {
+           if {[string toupper $remote_db(TR)]=="HT"} {           
+   		       send "n\r"
+           } 
+           if {[string toupper $remote_db(TR)]=="RN"} {           
+   		       send "y\r"
+           }            
+          append remote_db(cmd_output) "\n" $expect_out(0,string)    
+  			  exp_continue
+		    }   
+       -re "(.*)(ORDERED)$remote_db(host_prompt)" {
+           sleep 2
+           send "\004"
+           sleep 5
+           append remote_db(cmd_output) "\n" $expect_out(0,string)
+           exp_continue
+         }                  
+       -re "$remote_db(host_prompt)" {
+           append remote_db(cmd_output) "\n" $expect_out(0,string)
+         }		 
+         eof {
+            error "apg_cmd_exec() Shutdown in remote host <$remote_db(addr)>\n"
+         }
+         timeout {
+            error "apg_cmd_exec() Timeout in local host <$local_host>\n"
+         }
+      } 
+}
+#########################################################################
+# Name: pingMAU_exec()
+# Desc: run ping to MAUB command on remote host
+# Author : xmanpha
+# Args: see telnet_open()
+#########################################################################
+proc pingMAU { host_db args } {
+   upvar $host_db remote_db
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   # Setting delay timeout
+   set timeout $remote_db(timeout)
+   if {[string toupper $remote_db(platform)] == "L" } {
+      set command "ping -c 5 $args"
+   } else {
+      set command "ping -n 5 $args"
+      }
+   for {set i "0"} {$i < 12} {incr i} {
+      send "$command \r"
+      expect { 
+        -re "$remote_db(host_prompt)" {
+          set temp [string toupper $expect_out(buffer)]
+          if {[string match "*TTL=64*" $temp]} {
+              break
+          } else {  
+               sleep 20
+               }
+          if {[$i==12]} {
+             send_user "\n MAU is dead"
+             exit   
+             }
+          }
+          timeout {
+             send_user "\n ping Error \n"
+            }
+        }
+   }   
+}
+
+
+#########################################################################
+# Name: cpu_cmd_enhance()
+# Desc: run cpub command
+# Args: see telnet_open()
+#########################################################################
+proc cpu_cmd_enhance { host_db command strCheck } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+
+   # Execute cpt command in spawned process   
+   for {set i 0} {$i <= 3} {incr i} {
+      set remote_db(cmd_output) ""
+      # Ignore ptcoe command	  
+      send  "$command\r"
+      sleep 1   
+      expect {
+   	     # Confirm for ptsei command
+       full_buffer {
+             append remote_db(cmd_output) "\n" $expect_out(buffer)
+             exp_continue          
+           }
+        -re "(.*)CPT MESSAGE SYSCON DATA\r\n\r\n | SKA:(.*)link up(.*)$" {
+             send "\r"
+             exp_continue
+         }                   
+        -re "$remote_db(node_prompt)|(.*)(\r\ncpub)(.*:.*#)$" {
+            append remote_db(cmd_output) "\n" $expect_out(0,string)
+   		      }
+        eof {
+               error "cpu_cmd_exec() Shutdown in remote host <$remote_db(addr)>\n"
+            }
+        timeout {
+               error "cpu_cmd_exec() Timeout in local host \n"
+            }
+        }
+       sleep 1
+       set blnstate [string match "*$strCheck*" $remote_db(cmd_output)]
+      
+      ##continue if command output right
+       if {$blnstate == "1"} {
+          break                
+        }
+      ## exit program if cannot find strCheck
+      if {$i==3} {
+         send_user "\n ####Error : ^^^^^^ Don't find $strCheck in \t $remote_db(cmd_output) ^^^^^^^#### \n"
+         exit
+       }                         
+   }
+}
+
+
+#########################################################################
+# Name: cpu_cmd_exec()
+# Desc: run cpub command
+# Args: see telnet_open()
+#########################################################################
+proc cpu_cmd_exec { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set remote_db(cmd_output) ""
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+
+   # Execute cpt command in spawned process   
+   foreach command $args {
+      # Ignore ptcoe command	  
+      send  "$command\r"
+      sleep 1   
+      expect {
+   	     # Confirm for ptsei command
+        -re "$remote_db(node_prompt)|(.*)(\r\ncpub)(.*:.*#)$" {
+            append remote_db(cmd_output) "\n" $expect_out(0,string)
+   		 }
+        eof {
+               error "cpu_cmd_exec() Shutdown in remote host <$remote_db(addr)>\n"
+            }
+        timeout {
+               error "cpu_cmd_exec() Timeout in local host \n"
+            }
+      }
+   }
+}
+
+
+#########################################################################
+# Name: bc_first_connect()
+# Desc: run cpub command
+# Args: see telnet_open()
+#########################################################################
+proc bc_first_connect {host_db args} {
+
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set remote_db(cmd_output) ""
+   # Connect to spawned process   
+   set spawn_id $remote_db(CSpid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+	  
+      expect {
+         -re "(.*)SKA(.*)link up(.*)$" {
+             send "\r"
+             exp_continue
+             }  
+         -re "(.*)(cpub)(.*)login:(.*)$" {
+             send "root\r" 
+             exp_continue
+             }         
+         -re "(.*)(cpub)(.*:.*#) $" {
+         }
+     }
+      sleep 1        
+
+}
+#########################################################################
+# Name: bc_cmd_exec()
+# Desc: run cpub command
+# Args: see telnet_open()
+#########################################################################
+proc bc_cmd_enhance { host_db command strCheck } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   # Connect to spawned process   
+   set spawn_id $remote_db(CSpid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+
+   for {set i 0} {$i <= 3} {incr i} {
+      set remote_db(cmd_output) "" 
+      send  "$command\r"	  
+      expect {
+         -re "(.*)SKA(.*)link up(.*)$" {
+             sleep 2
+             send "\r"
+             exp_continue
+             } 
+         -re "(.*)(cpub)(.*)login:(.*)$" {
+             send "root\r" 
+             exp_continue
+             }
+         full_buffer {
+             append remote_db(cmd_output) "\n" $expect_out(buffer)
+             exp_continue          
+           }                                                 
+         -re "(.*)(cpub)(.*:.*#) $" {
+           append remote_db(cmd_output) "\n" $expect_out(0,string)
+    		 }
+         eof {
+                error "bc_cmd_exec() Shutdown in remote host \n"
+             }
+         timeout {
+                error "bd_cmd_exec() Timeout in local host \n"
+             }
+          }
+       sleep 1 
+       set blnstate [string match "*$strCheck*" $remote_db(cmd_output)]
+      
+      ##continue if command output right
+       if {$blnstate == "1"} {
+          break                
+        }
+      ## exit program if cannot find strCheck
+      if {$i==3} {
+         send_user "\n ####Error : ^^^^^^ Don't find $strCheck in \t $remote_db(cmd_output) ^^^^^^^#### \n"
+         exit
+       }            
+   }
+}
+
+
+
+#########################################################################
+# Name: bc_cmd_exec()
+# Desc: run cpub command
+# Args: see telnet_open()
+#########################################################################
+
+proc bc_cmd_exec { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set remote_db(cmd_output) ""
+   # Connect to spawned process   
+   set spawn_id $remote_db(CSpid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+
+   foreach command $args {      # Ignore ptcoe command
+      send  "$command\r"
+	  
+      expect {
+         -re "(.*)SKA(.*)link up(.*)$" {
+             send "\r"
+             exp_continue
+             }        
+         -re "(.*)(cpub)(.*)login:(.*)$" {
+             send "root\r" 
+             exp_continue
+         }
+                        
+         -re "(.*)(cpub)(.*:.*#) $" {
+           append remote_db(cmd_output) "\n" $expect_out(0,string)
+    		 }
+         eof {
+                error "bc_cmd_exec() Shutdown in remote host \n"
+             }
+         timeout {
+                error "bd_cmd_exec() Timeout in local host \n"
+             }
+       }
+      sleep 1 
+   }
+}
+
+#########################################################################
+# Name: rebootBC
+# Desc: run cpub command
+# Args: see telnet_open()
+#########################################################################
+
+proc rebootBC { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set remote_db(cmd_output) ""
+   # Connect to spawned process   
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   set spawn_id $remote_db(CSpid)
+   # Execute cpt command in spawned process   
+   foreach command $args {
+      # Ignore ptcoe command	  
+     send  "$command;\r" 
+      expect 
+        {
+         -i $remote_db(pid) -re "$remote_db(mml_prompt)" {
+              calling_proc mml_close remote_db
+              set spawn_id $remote_db(CSpid)          
+         }
+        }
+      set spawn_id $remote_db(CSpid) 
+      expect {            
+            -re "(.*)(cpub)(.*)login:(.*)$" {
+              send "root\r"
+             } 
+            full_buffer {
+             append remote_db(cmd_output) "\n" $expect_out(buffer)
+             exp_continue          
+            }              
+             -re "(.*)(cpub)(.*:.*#) $" {
+               append remote_db(cmd_output) "\n" $expect_out(0,string)
+        		 }
+        } 
+    }
+}
+
+#########################################################################
+# Name: getSB()
+# Desc: Get Standby Side
+# Author : xmanpha
+# Args: see telnet_open()
+#########################################################################
+proc getSB { host_db command strCheck  } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   # Execute cpt command in spawned process   
+   
+   
+   for {set i 0} {$i <= 3} {incr i} {
+      set count "0"
+      set remote_db(cmd_output) ""
+      # Ignore ptcoe command
+      if { [string compare $command "ptcoe"] == 0 } { continue } 
+      send  "$command;\r"
+      sleep 1       
+      expect {
+      
+     	     # Confirm for ptsei command
+     		 -re "(CONTINUE WITH COMMAND TOWARDS EXECUTIVE CP)(.*:)$" {
+     		    send "y;\r"
+             append remote_db(cmd_output) "\n" $expect_out(0,string)    
+     			  exp_continue
+     		   }
+         -re "COMMAND NOT SUCCESSFULLY COMPLETED$remote_db(cpt_prompt)" {
+              sleep 5
+              send "\r"
+              sleep 5
+              send  "$command;\r"
+              incr count
+              if {$count==5} {
+                 send_user "\n ###ERROR###: TIMEOUT IN MAU OR CPU or COMMAND NOT SUCCESSFULLY COMPLETED . Should have intervention manually "
+                 exit
+               }
+              append remote_db(cmd_output) "\n" $expect_out(0,string)  
+              exp_continue
+            }
+         full_buffer {
+             append remote_db(cmd_output) "\n" $expect_out(buffer)
+             exp_continue          
+           }   
+         -re "$remote_db(cpt_prompt)" {
+              append remote_db(cmd_output) "\n" $expect_out(0,string)
+     		    } 
+         eof {
+                  error "cpt_cmd_exec() Shutdown in remote host <$remote_db(addr)>\n"
+              }
+         timeout {
+                 error "cpt_cmd_exec() Timeout in local host <$local_host>\n"
+              }
+           }
+     sleep 2
+     
+     set blnstate [string match "*$strCheck*" $remote_db(cmd_output)]
+      
+      ##continue if command output right
+      if {$blnstate == "1"} {
+          if {[string match "*CP-A EX*" $expect_out(buffer)]} {
+             set remote_db(SB) "B"
+             set remote_db(ACT) "A"
+           }
+          if {[string match "*CP-B EX*" $expect_out(buffer)]} {
+             set remote_db(SB) "A"
+             set remote_db(ACT) "B"
+           } 
+          break                
+        }
+      ## exit program if cannot find strCheck
+      if {$i==3} {
+          send_user "\n ####Error : ^^^^^^ Don't find $strCheck in \t $remote_db(cmd_output) ^^^^^^^#### \n"
+          exit
+       }            
+   } 
+}
+
+#########################################################################
+# Name: sftp_check()
+# Desc: copy dump to APG
+# Author :xmanpha
+# Args: apgdir dekdir apg usr pass CPHW_dump PES_dump
+#########################################################################
+
+proc sftp_check {platform apgdir dekdir apg usr pass CPHW_dump PES_dump} {
+  eval spawn sftp $usr@$apg
+  set timeout 60
+  #exp_internal 1
+  expect {
+  	     # Confirm  command
+  		 -re "(continue connecting )(.*?)" {
+  		    send "yes\r"
+          exp_continue
+  		    }
+       -re "\[Pp]assword:" {
+           send "$pass\r"
+           exp_continue
+  		    }
+        -re "(.*)sftp>(.*)" {
+        }      
+        eof {
+             error "Shutdown in remote host <$apg>\n"
+           }
+        timeout {
+              error " Timeout in local host <$local_host>\n"
+           }
+   }
+  
+  if {[string toupper $platform] == "W"} {
+     if {[string length $apgdir] == "0"} {
+        send "ls /k:/ftpvol/cphw \r"
+        expect "*sftp>"
+        if {![string match "*HT_RN_temp*" $expect_out(0,string)]} {
+           send "mkdir /k:/ftpvol/cphw/HT_RN_temp \r"
+           expect "*sftp>" 
+            }                        
+        send "cd /k:/ftpvol/cphw/HT_RN_temp \r"        
+     } else {   
+         send "cd $apgdir \r"
+         }
+  }
+  if {[string toupper $platform] == "L"} {
+     send "cd /sw_package/CP \r"
+  }
+  expect { 
+    -re "(.*)sftp>" {
+       if {[string match "*No such file or directory*" $expect_out(0,string) ]} {
+            send_user " \n WRONG APG directory \n"
+            exit
+            }
+        }
+     timeout {
+                error " Timeout in local host <$local_host>\n"
+               }
+     }        
+                                   
+   send "dir \r"
+   expect "*sftp>"
+  set out $expect_out(buffer) 
+  if {[string match "*$CPHW_dump*" $out] && [string match "*$PES_dump*" $out]} {
+     send_user " \n DUMPs ARE AVAILABLE \n"
+  } elseif {[string match "*$CPHW_dump*" $out] || [string match "*$PES_dump*" $out]} {
+         send "lcd $dekdir \r" 
+         expect "sftp>"  
+         if {[string match "*$CPHW_dump*" $out]} {
+            send "put $PES_dump ./ \r"
+            }
+         if {[string match "*$PES_dump*" $out]} {
+                 send "put $CPHW_dump ./ \r"                           
+            }
+         expect "sftp>"   
+} else {                                                       
+         send "put $CPHW_dump ./ \r"
+         expect "sftp>"
+         send "put $PES_dump ./ \r"
+         expect "sftp>"
+         }     
+                      
+  send "exit \r"            
+  expect eof      
+}
+
+#########################################################################
+# Name: checkdump()
+# Desc: check and find CPHW at DEKT1
+# Author : xmanpha
+# Args: Dump dekt1 location
+#########################################################################
+
+proc checkdump {DumLoc} {
+   set lg_tmp [exec ls $DumLoc] 
+   #puts "\n aaaa $lg_tmp \n aaa \n"
+   if {![string match "*19089*.zip*" $lg_tmp]} {
+         send_user "\n ####ERROR####: wrong dump directory . Dumps don't exist in this directory \n" 
+         exit                 
+      }
+    cd $DumLoc    
+    set cntzip [eval exec ls -lh [glob *.zip] | wc -l]
+    #Change mode Dumps         
+    #  eval exec chmod 777 [glob *.zip]
+    #Get Dump names
+     set txttemp [eval exec  ls -lh [glob *.zip]]
+     set cntcphw 0
+     set cntpes 0
+     for {set i 1} {$i <= $cntzip} {incr i} {
+         set dname [exec echo $txttemp | awk {NR==invar {print$NF}} invar=$i]
+         set txtDmp [exec zipinfo $dname ]
+         if {[string match "*boot_image*" $txtDmp]} {
+            incr cntcphw 
+            set CPHW $dname
+          }
+         if {[string match "*CXC_*" $txtDmp]} {
+            incr cntpes
+            set PES $dname
+          }           
+        } 
+        
+     if  {$cntcphw == 0 } {
+         send_user "\n Don't find CPHW dump in $DumLoc \n"
+         exit
+     } 
+     if  {$cntpes == 0 } {
+         send_user "\n Don't find PES dump in $DumLoc \n"
+         exit
+     }      
+     if  {$cntcphw > 1 } {
+         send_user "\n There are $cntcphw CPHW dumps, Should have 1 CPHW dump \n"
+         exit
+     } 
+     
+     if  {$cntpes > 1 } {
+         send_user "\n There are $cntpes PES dumps, Should have 1 PES dump \n"
+         exit
+     } 
+     send_user "\n CPHW dump is  $CPHW  \n"
+     send_user "\n PES dump is $PES \n"
+     set HW_PES  "$CPHW;$PES"
+     return $HW_PES
+  }   
+#########################################################################
+# Name: RestartMAU()
+# Desc: Restart cold MAU
+# Author : xmanpha
+# Args: 
+#########################################################################
+
+proc RestartMAU { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+
+   calling_proc  apg_cmd_exec remote_db "hwcls"
+   set cmdLog $expect_out(buffer)            
+   set lTemp [split $cmdLog "\r\n"]
+   set cnt [lsearch $lTemp *MAUB*]
+   set newStr [join [lindex $lTemp $cnt] " "]
+   set iplist [split $newStr " "]
+   set ipMAU  [lindex $iplist 5]
+   set ipMAU_2 [lindex $iplist 6]
+   send "telnet /R $ipMAU\r"
+   expect {
+     -re "(.*)login:" {
+         send "razor\r"
+         exp_continue
+        }
+     -re "\[Pp]assword:" {
+          send "assar\r"
+          exp_continue          
+        }
+     -re "(.*)OSmon>" {
+         send "restart cold\r"
+         sleep 30
+         send "\r"
+         exp_continue
+     }
+     -re "$remote_db(host_prompt)" { 
+         } 
+     timeout {
+           error "Timeout in local host <$local_host>\n"
+         }   
+   }
+   
+} 
+
+#########################################################################
+# Name: PrintStep()
+# Desc: Print Step informaton
+# Author : xmanpha
+# Args: Printed string
+#########################################################################
+proc PrintStep {PrintedString} {
+     send_user "\n*********************************************************************************************************\n"
+     send_user "@@@@$PrintedString \n"
+     send_user "*********************************************************************************************************\n"
+}
+
+
+#########################################################################
+# Name: checkHappyTest()
+# Desc: check one comand DPxxx
+# Author : xmanpha
+# Args: host_db args
+######################################################################### 
+proc checkHappyTest { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   # Connect to spawned process   
+   set spawn_id $remote_db(pid)
+   
+   # Setting delay timeout
+   set timeout $remote_db(timeout)   
+   set command [string toupper $args]
+      switch -- $command \
+      "DPSES" { 
+          calling_proc mml_cmd_exec remote_db "dpses"  
+          calling_proc mml_cmd_exec remote_db "dpwsp" 
+                   
+           if {![string match "*SE-FM-FMMAN*" [string toupper $remote_db(cmd_output)]]} {
+                 send_user " \n Printout of DPSES is wrong \n" 
+                 exit                 
+              }              
+     } "DPPAI" {
+             calling_proc mml_cmd_exec remote_db "dppai"    
+             calling_proc mml_cmd_exec remote_db "dpwsp"
+             if {![string match "*WO*" [string toupper $remote_db(cmd_output)]]} {
+                    send_user " \n Printout of dppai is wrong \n" 
+                    exit                 
+                 }               
+     } "DPSWI" {
+             if {[string match "*NRAM*A*WO*" [string toupper $remote_db(cmd_output)]]} {
+                    set check_swi "*NRM*B*WO*"
+               }
+             if {[string match "*NRM*B*WO*" [string toupper $remote_db(cmd_output)]]} {
+                    set check_swi "*NRAM*A*WO*"
+                }
+             if {![string match "*WO*" [string toupper $remote_db(cmd_output)]]} {  
+                    calling_proc mml_cmd_exec remote_db "dpwsp"
+                    if {[string match "*NRAM*A*WO*" [string toupper $remote_db(cmd_output)]]} {
+                       set check_swi "*NRM*B*WO*"
+                    }
+                    if {[string match "*NRM*B*WO*" [string toupper $remote_db(cmd_output)]]} {
+                       set check_swi "*NRAM*A*WO*"
+                    }            
+                 }                    
+             calling_proc mml_cmd_exec remote_db "dpswi"    
+             calling_proc mml_cmd_exec remote_db "dpwsp" 
+             if {![string match "$check_swi" [string toupper $remote_db(cmd_output)]]} {
+                    send_user " \n Printout of dpswi is wrong \n" 
+                    exit                 
+                 }               
+     } "FCSEI" {
+             calling_proc mml_cmd_exec remote_db "fcsei"    
+             calling_proc mml_cmd_exec remote_db "dpwsp" 
+              if {![string match "*SE-FM-FMMAN*" [string toupper $remote_db(cmd_output)]]} {
+                    send_user " \n Printout of fcsei is wrong \n" 
+                    exit                 
+                 }
+               if {![string match "*AAM*A*" [string toupper $remote_db(cmd_output)]]} {
+                    send_user " \n Printout of fcsei is wrong \n" 
+                    exit                 
+                  }              
+     } default {
+                   send_user " \n $command is not be check \n"                 
+                   exit
+         }
+   }                
+
+
+
+#########################################################################
+# Name: setNode()
+# Desc: Set configuration before running HT
+# Author : xmanpha
+# Args: output Log file
+#########################################################################
+proc setNode { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   
+   set remote_db(cp) [string tolower $remote_db(cp)] 
+   
+   # set defaut for auto_exec 
+   if {$remote_db(platform)=="L"} {
+      calling_proc  apg_cmd_exec remote_db "rm -f /data/apz/data/boot/image/auto_exec"
+      calling_proc  apg_cmd_exec remote_db "echo \"/usr/local/sbin/load_debug_environment start\" >> /data/apz/data/boot/image/auto_exec"
+      calling_proc  apg_cmd_exec remote_db "echo \"wdCtrl -d\" >> /data/apz/data/boot/image/auto_exec"
+      send_user "\n==== Current auto_exec==== \n"
+      calling_proc  apg_cmd_exec remote_db "cat /data/apz/data/boot/image/auto_exec"
+   } else {
+      calling_proc  apg_cmd_exec remote_db "del /F/Q K:\\APZ\\data\\BOOT\\image\\auto_exec"
+      calling_proc  apg_cmd_exec remote_db "echo /usr/local/sbin/load_debug_environment start >> K:\\APZ\\data\\BOOT\\image\\auto_exec"
+      calling_proc  apg_cmd_exec remote_db "echo wdCtrl -d >> K:\\APZ\\data\\BOOT\\image\\auto_exec"
+      send_user "\n==== Current auto_exec==== \n"
+      calling_proc  apg_cmd_exec remote_db "more K:\\APZ\\data\\BOOT\\image\\auto_exec"
+   }
+   
+   ###################################################################
+   if {($remote_db(platform)=="W")&&($remote_db(track)==60)} {        
+     if {[string length $remote_db(cp)]== "0"} {
+        calling_proc  apg_cmd_exec remote_db "dir K:\\APZ\\data\\CPB\\CPHW\\ruf\\fwrhlogfile"
+        if {![string match "*File Not Found*" $remote_db(cmd_output)]} {
+           calling_proc  apg_cmd_exec remote_db "ren K:\\APZ\\data\\CPB\\CPHW\\ruf\\fwrhlogfile fwrhlogfile_$remote_db(timestart)"
+        } 
+        calling_proc  apg_cmd_exec remote_db "dir K:\\APZ\\data\\CPA\\CPHW\\ruf\\fwrhlogfile"
+        if {![string match "*File Not Found*" $remote_db(cmd_output)]} {
+           calling_proc  apg_cmd_exec remote_db "ren K:\\APZ\\data\\CPA\\CPHW\\ruf\\fwrhlogfile fwrhlogfile_$remote_db(timestart)"
+        }
+        # Delete events and errors for 61 SCP Windows 
+        calling_proc  apg_cmd_exec remote_db "del /F/Q K:\\APZ\\data\\CPB\\PES\\error\\*"
+        calling_proc  apg_cmd_exec remote_db "del /F/Q K:\\APZ\\data\\CPB\\PES\\event\\*" 
+        calling_proc  apg_cmd_exec remote_db "del /F/Q K:\\APZ\\data\\CPA\\PES\\error\\*"
+        calling_proc  apg_cmd_exec remote_db "del /F/Q K:\\APZ\\data\\CPA\\PES\\event\\*"               
+     } else {       
+        calling_proc  apg_cmd_exec remote_db "dir K:\\APZ\\logs\\$remote_db(cp)\\CPB\\CPHW\\ruf\\fwrhlogfile"
+        if {![string match "*File Not Found*" $remote_db(cmd_output)]} {
+         calling_proc  apg_cmd_exec remote_db "ren K:\\APZ\\logs\\$remote_db(cp)\\CPB\\CPHW\\ruf\fwrhlogfile fwrhlogfile_$remote_db(timestart)"
+        }
+        calling_proc  apg_cmd_exec remote_db "dir K:\\APZ\\logs\\$remote_db(cp)\\CPA\\CPHW\\ruf\\fwrhlogfile"
+        if {![string match "*File Not Found*" $remote_db(cmd_output)]} {
+         calling_proc  apg_cmd_exec remote_db "ren K:\\APZ\\logs\\$remote_db(cp)\\CPA\\CPHW\\ruf\fwrhlogfile fwrhlogfile_$remote_db(timestart)"
+        }
+        # Delete events and errors for 61 MCP Windows
+        calling_proc  apg_cmd_exec remote_db "del /F/Q K:\\APZ\\logs\\$remote_db(cp)\\CPB\\PES\\error\\*"
+        calling_proc  apg_cmd_exec remote_db "del /F/Q K:\\APZ\\logs\\$remote_db(cp)\\CPB\\PES\\event\\*" 
+        calling_proc  apg_cmd_exec remote_db "del /F/Q K:\\APZ\\logs\\$remote_db(cp)\\CPA\\PES\\error\\*"
+        calling_proc  apg_cmd_exec remote_db "del /F/Q K:\\APZ\\logs\\$remote_db(cp)\\CPA\\PES\\event\\*"                 
+     } 
+      
+    }
+    
+ if {($remote_db(platform)=="L")&&($remote_db(track)==60)} {   
+      if {[string length $remote_db(cp)] == "0"} {      
+           calling_proc  apg_cmd_exec remote_db "ls /data/apz/data/cpa/cphw/ruf/fwrhlogfile" 
+           if {![string match "*No such file*" $remote_db(cmd_output)]} { 
+              calling_proc  apg_cmd_exec remote_db "mv -f /data/apz/data/cpa/cphw/ruf/fwrhlogfile /data/apz/data/cpa/cphw/ruf/fwrhlogfile_$remote_db(timestart)"
+           }
+           calling_proc  apg_cmd_exec remote_db "ls /data/apz/data/cpb/cphw/ruf/fwrhlogfile" 
+           if {![string match "*No such file*" $remote_db(cmd_output)]} { 
+              calling_proc  apg_cmd_exec remote_db "mv -f /data/apz/data/cpb/cphw/ruf/fwrhlogfile /data/apz/data/cpb/cphw/ruf/fwrhlogfile_$remote_db(timestart)"
+           }
+           # Delete events and errors for 61 SCP Linux
+           calling_proc  apg_cmd_exec remote_db "rm -f /data/apz/data/cpa/pes/event/*"
+           calling_proc  apg_cmd_exec remote_db "rm -f /data/apz/data/cpa/pes/error/*"
+           calling_proc  apg_cmd_exec remote_db "rm -f /data/apz/data/cpb/pes/event/*"
+           calling_proc  apg_cmd_exec remote_db "rm -f /data/apz/data/cpb/pes/error/*"
+              
+      } else {
+      
+           calling_proc  apg_cmd_exec remote_db "ls /data/apz/logs/$remote_db(cp)/cpa/cphw/ruf/fwrhlogfile"
+           if {![string match "*No such file*" $remote_db(cmd_output)]} { 
+              calling_proc  apg_cmd_exec remote_db "mv -f /data/apz/logs/$remote_db(cp)/cpa/cphw/ruf/fwrhlogfile /data/apz/logs/$remote_db(cp)/cpa/cphw/ruf/fwrhlogfile_$remote_db(timestart)"
+           }
+           calling_proc  apg_cmd_exec remote_db "ls /data/apz/logs/$remote_db(cp)/cpb/cphw/ruf/fwrhlogfile"
+           if {![string match "*No such file*" $remote_db(cmd_output)]} { 
+              calling_proc  apg_cmd_exec remote_db "mv -f /data/apz/logs/$remote_db(cp)/cpb/cphw/ruf/fwrhlogfile /data/apz/logs/$remote_db(cp)/cpb/cphw/ruf/fwrhlogfile_$remote_db(timestart)"
+           } 
+           # Delete events and errors for 61 MCP Linux
+           calling_proc  apg_cmd_exec remote_db "rm -f /data/apz/logs/$remote_db(cp)/cpb/pes/event/*" 
+           calling_proc  apg_cmd_exec remote_db "rm -f /data/apz/logs/$remote_db(cp)/cpb/pes/error/*" 
+           calling_proc  apg_cmd_exec remote_db "rm -f /data/apz/logs/$remote_db(cp)/cpa/pes/event/*" 
+           calling_proc  apg_cmd_exec remote_db "rm -f /data/apz/logs/$remote_db(cp)/cpa/pes/error/*"            
+          }
+    }
+
+
+# Delete events and errors for 61 
+ if {$remote_db(track)==61} {
+    if {$remote_db(platform)=="L"} {
+       calling_proc  apg_cmd_exec remote_db "rm -f /data/apz/logs/$remote_db(cp)/cpa/pes/event/*"
+       calling_proc  apg_cmd_exec remote_db "rm -f /data/apz/logs/$remote_db(cp)/cpa/pes/error/*"  
+    } else {
+       calling_proc  apg_cmd_exec remote_db "del /F/Q K:\\APZ\\logs\\$remote_db(cp)\\CPA\\PES\\error\\*"
+       calling_proc  apg_cmd_exec remote_db "del /F/Q K:\\APZ\\logs\\$remote_db(cp)\\CPA\\PES\\event\\*"
+    }
+ } 
+ 
+ 
+  # Get APG time start 
+ 
+ if {[string toupper $remote_db(TR)] == "HT" } {       
+     if {$remote_db(platform)=="W"} {
+        calling_proc  apg_cmd_exec remote_db "echo %time:~0,5%"              
+     } else {
+        calling_proc  apg_cmd_exec remote_db "date +\"%H%M\""
+     }     
+     set cnt [exec echo $remote_db(cmd_output) | wc | awk {{print$1}}]
+     set cnt [expr {$remote_db(platform) eq "W"? $cnt -2 : $cnt -1}]          
+     set temp [exec echo $remote_db(cmd_output) | awk {NR==invar {print$1}} invar=$cnt]
+     set temp [string trim $temp]
+     regsub -all ":" $temp "" temp
+     if {[string length $temp]==3} {
+        set temp "0$temp"
+     } 
+     
+     set remote_db(apgtimestart) $temp        
+  }
+       
+}
+
+proc fwrh { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   if {$remote_db(platform)=="L"} {
+          if {[string length $remote_db(cp)] == "0"} {
+                calling_proc  apg_cmd_exec remote_db "cat /data/apz/data/CP$remote_db(SB)/cphw/ruf/fwrhlogfile"
+              } else {
+                calling_proc  apg_cmd_exec remote_db "cat /data/apz/logs/$remote_db(cp)/CP$remote_db(SB)/cphw/ruf/fwrhlogfile"
+              }  
+   }
+   if {$remote_db(platform)=="W"} {
+          if {[string length $remote_db(cp)]== "0"} {
+             calling_proc  apg_cmd_exec remote_db "more K:\\APZ\\data\\CP$remote_db(SB)\\CPHW\\ruf\\fwrhlogfile"
+          } else {
+             calling_proc  apg_cmd_exec remote_db "more K:\\APZ\\logs\\$remote_db(cp)\\CP$remote_db(SB)\\CPHW\\ruf\\fwrhlogfile"
+          }
+   }   
+}
+#########################################################################
+# Name: check_ouput()
+# Desc: check information in command 
+# Author : xmanpha
+# Args: output Log file
+#########################################################################
+proc check_ouput { strCheck strSource } {      
+   if {![string match "*$strCheck*" $strSource]} {
+         send_user "\n Error::::: $strCheck does not exist in $strSource" 
+         exit                 
+      }
+ }   
+
+
+#########################################################################
+# Name: passPara()
+# Desc: Get parameters from command line
+# Author : xmanpha
+# Args: output Log file
+#########################################################################
+
+
+proc passPara {argv argc} {
+  set j 1
+  if {($argc <4)||(($argc%2)!= "0")} {
+     send_user "Number of arguments must be greater than or equal 4 and even , should be follow :\n ./RN_HT.tcl -m RN/HT -s step \n" 
+     exit
+    } 
+  for {set i 0} {$i < $argc} {incr i} {
+      set strSrc [lindex $argv $i]
+      if {[string match "*-*" $strSrc]} {
+      set pos($j)  $i
+      set val($j)  [lindex $argv $i]
+      incr j
+      }
+      if {$i== $argc-1} {
+         if {$j-1!= $argc/2} {
+            set temp [expr $argc/2]
+            send_user "\n Missing option -arg \n"
+            send_user "\n Should be follow :./RN_HT.tcl -m RN/HT -s step \n"
+            exit
+            }
+      }  
+  }
+  for {set k 1} {$k < $j} {incr k} {
+     set strOpt  [string tolower $val($k)] 
+    switch -- [string tolower $val($k)] \
+        "-m" { 
+               set strVal [string toupper [lindex $argv [expr {$pos($k)+1}]]]          
+              if {($strVal!= "RN")&&($strVal != "HT")} {
+                 send_user "\n Wrong input value for argument -m \n"
+                 exit 
+                 }
+               set out(1) "-m"
+               set out(2) "$strVal"   
+        } "-s" {
+               set strVal [lindex $argv [expr {$pos($k)+1}]]
+               if {($strVal < 1)||($strVal > 11)} {
+                  send_user "\n Wrong input value for argument -s \n"
+                  send_user "\n It must be 1-9 for RN ,1-11 for HT \n"
+                  exit
+                  }
+                set out(3) "-s"
+                set out(4) "$strVal"                                    
+       }
+   }  
+   for {set m 1} {$m <= $argc} {incr m} {
+       append strOut ";" $out($m)
+   }
+   return $strOut
+}
+
+
+#########################################################################
+# Name: Logfile()
+# Desc: Print Step informaton
+# Author : xmanpha
+# Args: host_db args 
+#########################################################################
+proc logfile { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host 
+   #set host_prompt_Linux  "(.*):\u0003#"
+   set host_prompt_Linux  "(.*):\u0003(.*)$"
+   if {[string toupper $remote_db(platform)] == "L" } {
+      set remote_db(host_prompt) $host_prompt_Linux 
+   }  
+   set curdir [pwd]
+   set curtime [exec date {+DATE_%m-%d-%y_TIME_%Hh_%Mm_%Ss}]
+   set remote_db(timestart) $curtime     
+   exec mkdir -p "$curdir/RN_HT_Log"
+   exec chmod -R 777 "$curdir/RN_HT_Log"
+   set remote_db(logfile) "$remote_db(TR)_$remote_db(addr)_$remote_db(cp)_$curtime.log"
+   set remote_db(conlog)  "$remote_db(TR)_$remote_db(addr)_$remote_db(cp)_$curtime\_console.log"
+   #set remote_db(log_dir) "$curdir/RN_HT_log/"
+   
+   if {$remote_db(run_from) == "1"} {
+      set ctime [exec date {+%m-%d-%y %Hh:%Mm:%Ss}]
+      set username [exec whoami]
+      log_file -noappend "$remote_db(log_dir)$remote_db(logfile)"
+         
+      if {[string toupper $remote_db(TR)] == "RN" } {
+         send_user "\t\t\t\t&!*@* RESTORING NODE &!*@* \n"
+         }
+      if {[string toupper $remote_db(TR)] == "HT" } {
+         send_user "\t\t\t\t&!*@* HAPPY TEST &!*@* \n"
+         }
+            
+      PrintStep "\t\t\tLOG FILE OUTPUT\t\t\t@@@@ \r\n    Tester : $username  \r\n    DATE   : $ctime  \r\n    Node   : $remote_db(addr)"
+   } else {
+      set remote_db(logfile) [concat "CONTINUE-STEP_$remote_db(run_from)_$remote_db(logfile)"]   
+      log_file -noappend "$remote_db(log_dir)$remote_db(logfile)"
+      if {[string toupper $remote_db(TR)] == "RN" } {
+         send_user "\t\t\t\t&!*@* RESTORING NODE CONTINUE $remote_db(run_from)&!*@* \n"
+         }
+      if {[string toupper $remote_db(TR)] == "HT" } {
+         send_user "\t\t\t\t&!*@* HAPPY TEST CONTINUE $remote_db(run_from) &!*@* \n"
+         } 
+   }     
+}   
+#########################################################################
+# Name: checkandcopydump()
+# Desc: check and copydump from DEK to APG
+# Author : xmanpha
+# Args:  host_db args
+#########################################################################
+
+proc checkandcopydump { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set DumpName [checkdump $remote_db(dekdirdump)]
+   set ldump [split $DumpName ";"]
+   set remote_db(CPHW_dump)  [lindex $ldump 0]
+   set remote_db(PES_dump) [lindex $ldump 1]
+   if {($remote_db(TR) =="HT")} {
+      PrintStep "\t\t\tCHECK AND COPY DUMP TO APG\t\t\t@@@@"
+      PrintStep "\t\t\tSTEP 1 : NORMALIZE SYSTEM\t\t\t@@@@ \r\n    \t\t\t         ASSUME COMPLETELY \t\t\t"
+   } else {
+      PrintStep "\t\t\tSTEP 1 : CHECK AND COPY DUMP TO APG\t\t\t@@@@"
+   }
+   sftp_check $remote_db(platform) $remote_db(apgdir) $remote_db(dekdirdump) $remote_db(addr) $remote_db(user) $remote_db(pass) $remote_db(CPHW_dump) $remote_db(PES_dump)
+   if {[string length $remote_db(apgdir)] == "0"} { 
+       set remote_db(apgdir) "/k:/ftpvol/cphw/HT_RN_temp"
+   }
+   calling_proc  ssh_open  remote_db
+   if {$remote_db(track)== "61"} {
+       log_file
+       log_file -noappend "$remote_db(log_dir)$remote_db(conlog)"
+      # calling_proc telnet_BCconsole remote_db
+      # log_file
+      # set spawn_id $remote_db(apgpid)
+      # log_file  "$remote_db(log_dir)$remote_db(logfile)"
+    }
+      calling_proc setNode remote_db   
+   }
+
+#########################################################################
+# Name: checksystemNrestartMAU()
+# Desc: Check system and restart MAU
+# Author : xmanpha
+# Args: host_db args
+#########################################################################
+proc checksystemNrestartMAU { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   PrintStep "\t\t\tSTEP 2 : CHECK SYSTEM \t\t\t@@@@"
+   if {$remote_db(run_from)== "2"} {
+     set DumpName [checkdump $remote_db(dekdirdump)]
+     set ldump [split $DumpName ";"]
+     set remote_db(CPHW_dump)  [lindex $ldump 0]
+     set remote_db(PES_dump) [lindex $ldump 1] 
+     if {[string length $remote_db(apgdir)] == "0"} { 
+     set remote_db(apgdir) "k:\ftpvol\cphw\HT_RN_temp"
+   }                        
+	   calling_proc  ssh_open  remote_db
+   }
+  # calling_proc apg_cmd_enhance   remote_db  "hwcls" "CONFIGURATION TABLE"
+   calling_proc apg_cmd_enhance   remote_db  "prcstate -l" "active node is up and working" 
+   check_ouput "active node is up and working" $remote_db(cmd_output)
+   if {[string toupper $remote_db(platform)] == "W" } {
+      calling_proc apg_cmd_enhance   remote_db  "hwver" "HARDWARE VERSION"
+      calling_proc apg_cmd_enhance   remote_db  "swrsid -h" "CURRENT SYSTEM"
+      calling_proc apg_cmd_enhance   remote_db  "nels" "System Type"
+   } else {
+      calling_proc apg_cmd_enhance   remote_db  "ver" "APG"
+      calling_proc apg_cmd_enhance   remote_db  "swrprint | grep APG43L" "APG"
+      }
+} 
+
+#########################################################################
+# Name: InstallDumpAPG ()
+# Desc: Install and activate dumps
+# Args: see telnet_open()
+#########################################################################
+
+proc InstallDumpAPG { host_db args } {
+   upvar $host_db remote_db
+   global local_host
+   global expect_out
+   set spawn_id $remote_db(pid)
+   if {$remote_db(TR) =="HT"} {
+      PrintStep "\t\t\tSTEP 3 : CREATE PLEX RELFSWxx\r\n    \t\t\t         ASSUME COMPLETELY\t\t\t@@@@" 
+      PrintStep "\t\t\tSTEP 4 : FIND MATCHING PES DUMP\r\n    \t\t\t         ASSUME COMPLETELY\t\t\t@@@@" 
+      PrintStep "\t\t\tSTEP 5 : PREPARE FOR CPHW\/PES UPGRADE ON THE APG\t\t\t@@@@" 
+   } else {
+      PrintStep "\t\t\tSTEP 3 : INSTALL DUMP ON APG \t\t\t@@@@" 
+   }
+   if {$remote_db(run_from)== "3"} {
+     set DumpName [checkdump $remote_db(dekdirdump)]
+     set ldump [split $DumpName ";"]
+     set remote_db(CPHW_dump)  [lindex $ldump 0]
+     set remote_db(PES_dump) [lindex $ldump 1] 
+     if {[string length $remote_db(apgdir)] == "0"} { 
+      set remote_db(apgdir) "/k:/ftpvol/cphw/HT_RN_temp"
+      }                    
+	   calling_proc  ssh_open  remote_db       
+   }
+   set remote_db(cp) [string toupper $remote_db(cp)]
+    if {[string toupper $remote_db(platform)] == "W" } {
+       regsub -all \/ $remote_db(apgdir) \\ temp
+       regsub {\\} $temp " " apgdir
+       set remote_db(apgdir) $apgdir
+       calling_proc apg_cmd_exec remote_db "cd /D $remote_db(apgdir)"
+      } 
+    calling_proc apg_ex_enhance remote_db "cfeted -v cur" "Current settings"
+    calling_proc apg_cmd_enhance remote_db "cfeted -d hw $remote_db(CPHW_dump)" "CPHW dump was installed."
+    calling_proc apg_cmd_enhance remote_db "cfeted -d pe $remote_db(PES_dump)" "PES dump was installed."
+  
+    if {$remote_db(track)== "61"} {
+      if {$remote_db(platform)=="L"} { 
+         calling_proc apg_ex_enhance remote_db "cfeted -n hw -lab" "cfeted"
+         calling_proc apg_ex_enhance remote_db "cfeted -n pe -lab" "cfeted"  
+      } else {
+         calling_proc apg_ex_enhance remote_db "cfeted -n hw " "cfeted"
+         calling_proc apg_ex_enhance remote_db "cfeted -n pe" "cfeted"
+      }                  
+    } else {
+        if {$remote_db(platform)=="L"} { 
+           calling_proc apg_ex_enhance remote_db "cfeted -n hw -s a -lab" "cfeted"  
+           calling_proc apg_ex_enhance remote_db "cfeted -n hw -s b -lab" "cfeted"
+           calling_proc apg_ex_enhance remote_db "cfeted -n pe -s a -lab" "cfeted"
+           calling_proc apg_ex_enhance remote_db "cfeted -n pe -s b -lab" "cfeted" 
+        } else {
+           calling_proc apg_ex_enhance remote_db "cfeted -n hw -s a" "cfeted"  
+           calling_proc apg_ex_enhance remote_db "cfeted -n hw -s b" "cfeted"
+           calling_proc apg_ex_enhance remote_db "cfeted -n pe -s a" "cfeted"
+           calling_proc apg_ex_enhance remote_db "cfeted -n pe -s b" "cfeted"                 
+        }   
+       
+     }
+    calling_proc apg_ex_enhance remote_db "cfeted -v cur" "Current settings"                
+ }    
+ 
+ 
+#########################################################################
+# Name: RebootNconnectSB()
+# Desc: Reboot stanby side
+# Author : xmanpha
+# Args: host_db args 
+#########################################################################
+proc RebootNconnectSB  { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set spawn_id  $remote_db(pid)
+   if {$remote_db(TR) =="RN"} {  
+      PrintStep "\t\t\tSTEP 4 : REBOOT AND CONNECT TO CPT CONSOLE ON CP SB SIDE\t\t\t@@@@"
+   }
+   if {$remote_db(run_from)== "4"} {                     
+	   calling_proc  ssh_open  remote_db
+   } 
+   calling_proc mml_open_ex  remote_db
+   if {($remote_db(TR) =="HT")&& ($remote_db(run_from)!= "4")} {
+       if {$remote_db(state) != "WO"} {
+          send_user "\n ERROR:::::SYSTEM STATE MUST BE WO BEFORE RUNNING HAPPY TEST \n"
+          exit
+          }
+     }  
+   if {$remote_db(state) == "WO"} {
+    calling_proc mml_cmd_enhance remote_db "lamip" "CPUB BOOT IMAGE"
+    if {$remote_db(TR) =="HT"} {
+       PrintStep "\t\t\tSTEP 6 : PREPARE FOR CPHW UPGRADE (ONLY DOUBLE SIDED SYSTEM)\t\t\t@@@@" 
+     }  
+    calling_proc mml_cmd_enhance remote_db "FCSEI" "COMMAND EXECUTED"
+    }
+    if {$remote_db(TR) =="HT"} {
+       PrintStep "\t\t\tSTEP 7 : UPGRADE CPHW & PES ON CP SB SIDE OR BLADE \t\t\t@@@@" 
+     }      
+   calling_proc ptcoi_open remote_db
+   calling_proc cpt_cmd_enhance   remote_db "ptwsp" "CPT MESSAGE"
+   calling_proc cpt_cmd_enhance   remote_db   "ptses" "EXECUTED"
+   calling_proc getSB remote_db "ptwsp" "CPT MESSAGE"
+   calling_proc cpt_cmd_enhance   remote_db   "ptcpr" "EXECUTED"
+   calling_proc ptcoi_close remote_db
+   calling_proc  mml_close  remote_db
+   sleep 250
+   calling_proc telnet_cpub remote_db
+   calling_proc cpu_cmd_exec remote_db "\r\r\r"
+   calling_proc cpu_cmd_enhance remote_db "cat /etc/motd" "Label used"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /dev/lzyinfo" "PHW_LZY"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_exec remote_db "\r"
+   calling_proc cpu_cmd_enhance remote_db "cat /dev/imginfo" "XC"
+   append remote_db(report) "\n" $remote_db(cmd_output)   
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/version" "Linux"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/cmdline" "root"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/meminfo" "MemTotal"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/driver/exempt/meminfo" "exempt"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+ #  calling_proc cpu_cmd_enhance remote_db "cat /proc/cpuinfo" "processor"
+ #  append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /etc/SuSE-release;env | grep CPHW_ATTR_* | sort;ps" "CXC_"
+   calling_proc cpu_cmd_exec remote_db "\r"
+   calling_proc cpu_cmd_enhance remote_db "date" "UTC"
+   calling_proc cpu_cmd_enhance remote_db "uname -a" "Linux"
+   calling_proc cpu_cmd_enhance remote_db "uptime" "load average"
+   send "exit\r"
+   #calling_proc mml_open_ex  remote_db
+   #calling_proc ptcoi_open remote_db 
+   #calling_proc cpt_cmd_enhance remote_db "PTSRP:reg=fwlist" "CPHW DUMP"
+   #calling_proc ptcoi_close remote_db
+   
+ #  calling_proc  mml_close  remote_db
+ #  calling_proc fwrh remote_db
+ #  append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc mml_open_ex  remote_db   
+}
+#########################################################################
+# Name: RebootNconnectBC()
+# Desc: Reboot Blade Cluster
+# Author : xmanpha
+# Args: host_db args 
+#########################################################################
+proc RebootNconnectBC  { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set spawn_id  $remote_db(pid)
+   set remote_db(apgpid) $spawn_id 
+   if {$remote_db(order) != "7" } {
+      if {$remote_db(TR) =="HT"} {
+         PrintStep "\t\t\tSTEP 7 : UPGRADE CPHW & PES ON CP SB SIDE OR BLADE\t\t@@@@" 
+     } else {      
+         PrintStep "\t\t\tSTEP 4 : REBOOT AND CONNECT TO BC CONSOLE \t\t\t@@@@"
+      }
+   }
+   if {(($remote_db(run_from) > 1)&&($remote_db(run_from) < 5))||($remote_db(run_from) == 7)} {                     
+	   calling_proc  ssh_open  remote_db
+     log_file
+     set remote_db(conlog) [concat "CONTINUE-STEP_$remote_db(run_from)_$remote_db(conlog)"]
+     log_file -noappend "$remote_db(log_dir)$remote_db(conlog)"
+     calling_proc telnet_BCconsole remote_db
+     log_file
+     set spawn_id $remote_db(apgpid)
+     log_file  "$remote_db(log_dir)$remote_db(logfile)"
+   }
+   calling_proc mml_open_ex  remote_db
+   if {$remote_db(TR) == "HT"} {
+       if {$remote_db(state) != "WO"} {
+          send_user "\n ERROR:::::SYSTEM STATE MUST BE NORMALIZED BEFORE RUNNING HAPPY TEST \n"
+          exit
+          }
+     }  
+   if {$remote_db(state) == "WO"} {
+      calling_proc mml_cmd_enhance remote_db "lamip" "CPUB BOOT IMAGE"
+      calling_proc ptcoi_open remote_db
+      calling_proc cpt_cmd_enhance   remote_db "ptwsp" "QUORUM-STATE"
+      calling_proc cpt_cmd_exec   remote_db   "ptcpr"
+      # "EXECUTED"
+      # send_user "here"
+     # calling_proc cpt_cmd_enhance   remote_db "ptwsp" "QUORUM-STATE"
+      log_file
+      #set spawn_id $remote_db(CSpid)
+      #log_file "$remote_db(log_dir)$remote_db(conlog)" 
+      #calling_proc bc_first_connect remote_db
+   } else {     
+     calling_proc mml_close  remote_db
+     log_file
+    # set spawn_id $remote_db(CSpid)
+    # log_file "$remote_db(log_dir)$remote_db(conlog)"
+    # calling_proc bc_first_connect remote_db     
+    # calling_proc bc_cmd_exec remote_db "reboot"
+    calling_proc mml_open_ex  remote_db
+    calling_proc ptcoi_open remote_db
+    calling_proc cpt_cmd_enhance   remote_db "ptwsp" "QUORUM-STATE"
+    calling_proc cpt_cmd_enhance   remote_db   "ptcpr" "EXECUTED"
+    sleep 200
+    calling_proc mml_close  remote_db
+    calling_proc telnet_BCconsole remote_db
+    calling_proc bc_cmd_enhance remote_db "cat /etc/motd" "Label used"
+   calling_proc bc_cmd_enhance remote_db "cat /dev/lzyinfo" "PHW_LZY"
+   calling_proc bc_cmd_enhance remote_db "cat /dev/imginfo" "XC"
+   calling_proc bc_cmd_enhance remote_db "uname -a" "Linux"
+   calling_proc bc_cmd_enhance remote_db "uptime" "load average"
+   send "exit\r"
+   }
+   calling_proc bc_cmd_exec remote_db "wdCtrl -d" 
+   calling_proc bc_cmd_exec remote_db "\r"  
+    calling_proc bc_cmd_enhance remote_db "cat /etc/motd" "Label used"
+   if {$remote_db(order) != "7" } { 
+      append remote_db(report) "\n" $remote_db(cmd_output)
+     } 
+   calling_proc bc_cmd_enhance remote_db "cat /dev/lzyinfo" "PHW_LZY"
+   if {$remote_db(order) != "7" } { 
+     append remote_db(report) "\n" $remote_db(cmd_output)
+   }
+   calling_proc bc_cmd_enhance remote_db "cat /dev/imginfo" "XC"
+   if {$remote_db(order) != "7" } {
+     append remote_db(report) "\n" $remote_db(cmd_output)
+    }    
+   calling_proc bc_cmd_exec remote_db "\r"
+   calling_proc bc_cmd_enhance remote_db "cat /etc/SuSE-release;env | grep CPHW_ATTR_* | sort;ps" "CXC_"
+   calling_proc bc_cmd_enhance remote_db "date" "UTC"
+   calling_proc bc_cmd_exec remote_db "\r"
+   calling_proc bc_cmd_enhance remote_db "uname -a" "Linux"
+   calling_proc bc_cmd_enhance remote_db "uptime" "load average"
+   log_file
+   set spawn_id $remote_db(apgpid)
+   log_file "$remote_db(log_dir)$remote_db(logfile)"
+   calling_proc mml_open_ex  remote_db   
+   calling_proc ptcoi_open remote_db
+   calling_proc cpt_cmd_enhance   remote_db "ptwsp" "QUORUM-STATE"  
+   calling_proc cpt_cmd_enhance remote_db "ptsrp:reg=fwlist" "CPHW DUMP"   
+   calling_proc ptcoi_close remote_db   
+}
+
+
+#########################################################################
+# Name: RestartPlexDump()
+# Desc: Load PlexDump
+# Author : xmanpha
+# Args: host_db args
+#########################################################################
+proc RestartPlexDump { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   if {$remote_db(order) != "7" } {
+     if {$remote_db(TR) =="HT"} {
+          PrintStep "\t\t\tSTEP 8 : LOAD AND START MATCHING PLEX DUMP ON CP SB SIDE OR BLADE\t@@@@ "
+     } else {
+          PrintStep "\t\t\tSTEP 5 : RESTART PLEX DUMP ON CP  \t\t\t@@@@ "
+       }
+   }
+   if {$remote_db(run_from)== "5"} {                     
+	   calling_proc  ssh_open  remote_db
+   }
+   if {$remote_db(run_from)!= "5"} {
+		calling_proc  mml_close   remote_db
+   }
+#   calling_proc apg_ex_enhance  remote_db "cpfls \r \r \r \r " "CPF FILE TABLE"
+   calling_proc apg_ex_enhance  remote_db "bupidls -n $remote_db(relfsw)" "PRODUCT IDENTITIES"
+   calling_proc mml_open_ex  remote_db
+   calling_proc ptcoi_open remote_db
+   if {$remote_db(track)== "61"} {
+      if {$remote_db(TR) == "HT"} {
+       #calling_proc cpt_cmd_enhance remote_db "ptsri:rank=reload,file=relfsw$remote_db(relfsw)" "EXECUTED"
+       calling_proc cpt_ordered remote_db "ptcpl:file=relfsw$remote_db(relfsw)" "ORDERED"
+      } else {
+       calling_proc cpt_ordered remote_db "ptcpl:file=relfsw$remote_db(relfsw)" "ORDERED"
+      }
+   } else {
+      if {$remote_db(run_from) <= "5"} {                     
+   	   calling_proc getSB remote_db "ptwsp" "CPT MESSAGE"
+      }
+      calling_proc cpt_ordered remote_db "ptcpl:file=relfsw$remote_db(relfsw),cs=$remote_db(SB)" "(ABSOLUTE) FINISHED"
+      for {set i 1} {$i <= 6} {incr i} {
+         calling_proc cpt_cmd_exec remote_db "ptsri:start"
+         if {[string match "*EXECUTED*" [string toupper $remote_db(cmd_output)]]} {
+           break
+         }
+         if {$i == 6} {
+          send_user "\n ##### ERROR ptsri:start cannot executed \n"
+         }
+         puts "\n----------Waiting 10 s for rerunning ptsri:start ------------- \n"
+         sleep 10
+      }
+      
+      puts "\n -----------Waiting 60s for plex loading----------- \n"           
+      sleep 60      
+   }
+   calling_proc cpt_send_enter remote_db 2
+   calling_proc cpt_cmd_enhance   remote_db "ptwsp" "CPT MESSAGE"
+      
+}
+
+#########################################################################
+# Name: ReconnectCPSBandMAUenable()
+# Desc: Reconnect cpt SB and clear MARK of MAU
+# Author : xmanpha
+# Args: output Log file
+#########################################################################  
+proc ReconnectCPSBandMAUenable { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   if {$remote_db(TR) =="RN"} {   
+      PrintStep "\t\t\tSTEP 6 : Reconnect cpt SB and clear MARK of MAU \t\t\t@@@@"
+   }
+   if {$remote_db(run_from)== "6"} {                     
+    calling_proc  ssh_open  remote_db
+   }
+   if {$remote_db(run_from)!= "6"} {
+    calling_proc ptcoi_close   remote_db
+    calling_proc  mml_close    remote_db 
+   }
+
+     calling_proc mml_open_ex remote_db -s
+     calling_proc mml_cmd_enhance remote_db "IOEXP" "IDENTITY"
+     if {($remote_db(track)== "60")&&($remote_db(TR) == "HT")} {
+        set strVer "MIDDLEWARE MISMATCH"
+     } else {
+        set strVer "CPUB BOOT IMAGE" 
+        }
+     calling_proc mml_cmd_enhance remote_db "lamip" $strVer  
+     calling_proc mml_cmd_enhance remote_db "syati:restart" "CONNECTION INTERRUPTED" 
+    if {($remote_db(sss) == "NO")} {
+     calling_proc ptcoi_open  remote_db
+     calling_proc cpt_cmd_enhance  remote_db "ptwsp" "CP STATE"
+   } else {
+       calling_proc  mml_close    remote_db    
+       calling_proc mml_open_ex   remote_db        
+    }
+  }
+
+#########################################################################
+# Name: SwitchsideAndreboot()
+# Desc: Switch side and reboot
+# Author : xmanpha
+# Args:  host_db args
+######################################################################### 
+proc SwitchsideAndreboot { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   if {$remote_db(TR) =="HT"} {
+     PrintStep "\t\t\tSTEP 9 : CHANGE CP STATES SO THAT CPHW & PES CAN BE UPDATED\r\n    \t\t\t         ON NEW CP SB SIDE \t\t\t@@@@"
+   } else {
+     PrintStep "\t\t\tSTEP 7 : SWITCH NEW SB TO BECOME EX (ONLY FOR 40/50/55/60) \t\t\t@@@@"   
+   }
+   if {$remote_db(SB) == "B"} {
+      set $remote_db(SB) "A"
+      } else {
+       set $remote_db(SB) "B" 
+      }
+      
+   if {$remote_db(run_from)== "7"} {                     
+    calling_proc  ssh_open  remote_db
+    calling_proc mml_open_ex   remote_db 
+    if {$remote_db(sss) == "NO"} {
+      calling_proc ptcoi_open    remote_db 
+      calling_proc cpt_cmd_enhance   remote_db "ptswi" "EXECUTED"
+      }    
+   }
+   if {($remote_db(sss)!= "NO")} {
+      if {[string toupper $remote_db(sss)]== "SASTS"} {
+       calling_proc mml_cmd_enhance remote_db "SASTS" "EXECUTED"  
+      }
+      calling_proc sybup remote_db "sybup:file"      
+      calling_proc mml_cmd_enhance remote_db "dppai:state=notswi" "START PASSED"
+      calling_proc mml_cmd_enhance remote_db "dpwsp" "WO" 
+      calling_proc mml_cmd_enhance remote_db "diecp:inf=par" "NONE"
+      calling_proc mml_cmd_enhance remote_db "fcmwi" "EXECUTED"
+      calling_proc mml_cmd_enhance remote_db "dpwsp" "WO"
+      calling_proc mml_cmd_enhance remote_db "dircp" "CP EVENT RECORD"      
+      calling_proc mml_cmd_enhance remote_db "lamip" "MIDDLEWARE MISMATCH"
+      calling_proc mml_cmd_enhance remote_db "FCSEI" "COMMAND EXECUTED"
+      calling_proc mml_cmd_enhance remote_db "dpwsp" "SE-FM-FMMAN"
+      calling_proc ptcoi_open    remote_db           
+   }
+   if {$remote_db(sss) == "NO"} {
+#      calling_proc ptcoi_open    remote_db 
+      calling_proc cpt_cmd_enhance   remote_db "ptswi" "EXECUTED"
+   }
+   calling_proc cpt_cmd_enhance remote_db "ptwsp" "CPT MESSAGE"
+
+   if {$remote_db(SB) == "A"} {
+      set $remote_db(SB) "A"
+      } else {
+       set $remote_db(SB) "B"
+      }
+
+   if {$remote_db(TR) =="HT"} {  
+        PrintStep "\t\t\tSTEP 10 : UPGRADE CPHW & PES ON NEW CP SB SIDE \t\t\t@@@@"
+    }     
+   calling_proc cpt_cmd_enhance remote_db "ptcpr" "EXECUTED"
+   calling_proc getSB remote_db "ptwsp" "CPT MESSAGE"
+   calling_proc cpt_cmd_enhance remote_db "ptwsp" "CPT MESSAGE"
+   calling_proc ptcoi_close remote_db
+   calling_proc  mml_close  remote_db
+   sleep 200
+   calling_proc telnet_cpub remote_db
+   calling_proc cpu_cmd_exec remote_db "\r"
+   calling_proc cpu_cmd_enhance remote_db "cat /etc/motd" "Label used"
+   calling_proc cpu_cmd_enhance remote_db "cat /dev/lzyinfo" "PHW_LZY"
+   calling_proc cpu_cmd_exec remote_db "\r"
+   calling_proc cpu_cmd_enhance remote_db "cat /dev/imginfo" "XC"
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/version" "Linux"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/cmdline" "root"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/meminfo" "MemTotal"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/driver/exempt/meminfo" "exempt"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+ #  calling_proc cpu_cmd_enhance remote_db "cat /proc/cpuinfo" "processor"
+ #  append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /etc/SuSE-release;env | grep CPHW_ATTR_* | sort;ps" "CXC_"
+   calling_proc cpu_cmd_exec remote_db "\r"
+   calling_proc cpu_cmd_enhance remote_db "date" "UTC"
+   calling_proc cpu_cmd_enhance remote_db "uname -a" "Linux"
+   calling_proc cpu_cmd_exec remote_db "\r"
+   calling_proc cpu_cmd_enhance remote_db "uptime" "load average"
+   calling_proc cpu_cmd_exec remote_db "\r"  
+#   send "exit\r"
+   calling_proc telnet_close remote_db  
+#   sleep 60 
+#   expect "Connection closed by foreign host"
+#   calling_proc apg_cmd_exec remote_db "\r"
+   
+#   calling_proc apg_cmd_enhance   remote_db  "prcstate -l" "active node is up and working"
+   calling_proc mml_open_ex  remote_db
+   calling_proc ptcoi_open remote_db 
+   calling_proc cpt_cmd_enhance remote_db "PTSRP:reg=fwlist" "CPHW DUMP"
+#   if {$remote_db(upmau) == "1"} {
+#     calling_proc cpt_cmd_exec remote_db "ptarp:reg=sysconlog"
+#     calling_proc cpt_cmd_enhance remote_db "ptarp:reg=sysconlog" "END"     
+#   }   
+   calling_proc ptcoi_close remote_db
+   calling_proc  mml_close   remote_db
+ #  calling_proc fwrh remote_db
+   append remote_db(report) "\n" $remote_db(cmd_output) 
+  }
+
+#########################################################################
+# Name: BackupAndRecci()
+# Desc: Backup and recci
+# Author : xmanpha
+# Args: host_db args
+######################################################################### 
+proc BackupAndRecci { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   if {$remote_db(TR) =="HT"} {
+     PrintStep "\t\t\tSTEP 11 : PREPARE FOR DOUBLE SIDE NORMALISATION \t\t\t@@@@"   
+   } else {
+     PrintStep "\t\t\tSTEP 8 : BACKUP AND RECCI \t\t\t@@@@"
+   }
+   if {$remote_db(run_from)== "8"} {                     
+   calling_proc  ssh_open  remote_db  
+   }
+   for {set i "0"} {$i < 3} {incr i} {  
+     calling_proc mml_open_ex   remote_db 
+     if {$remote_db(state) != "SEP"} {
+        puts "\n Sleep 10s to rerun mml_open \n"
+        sleep 10s
+      } else {
+             break
+        }
+      if {$i == 2} {
+         send_user "\n #####PLEX cannot start before BACKUP AND RECCI#### \n"
+         exit
+      }
+    }  
+   ########################################################################
+   ###create system backup (only double sided system)
+   ########################################################################
+   calling_proc mml_cmd_enhance remote_db "IOEXP" "IDENTITY"
+  # calling_proc mml_cmd_enhance remote_db "dphip" "HARDWARE IDENTITY"
+   calling_proc mml_cmd_enhance remote_db "lamip" "MIDDLEWARE UNIT IDENTITY"
+   calling_proc mml_cmd_enhance remote_db "iocmc:state=passive" "EXECUTED"
+   calling_proc mml_cmd_enhance remote_db "iocmc:state=active" "EXECUTED"
+   calling_proc sybup remote_db "sybup:file"
+   puts "\n ===Sleep 30s before recci==== \n"
+   sleep 30
+   
+   ##########################################################################
+   ##Normalise CP to parallel working/normal state (only double sided system)
+   ##########################################################################
+   if {$remote_db(TR) =="HT"} {
+     PrintStep "\t\t\tSTEP 12 : EXECUTE HAPPY TESTS  \t\t\t@@@@"   
+   }   
+   calling_proc recci remote_db "recci"
+}
+
+ 
+#########################################################################
+# Name: verifyMiddleware()
+# Desc: verify middleware 
+# Author : xmanpha
+# Args: host_db args
+######################################################################### 
+proc verifyMiddleware { host_db args } {
+      upvar $host_db remote_db
+      global expect_out
+      global local_host
+      if {$remote_db(track)== "61"} {
+        if {$remote_db(TR) =="RN"} { 
+           PrintStep "\t\t\tSTEP 6 : VERIFY ALL MIDDLEWARE VERSIONS \t\t\t\@@@@" 
+        } 
+        calling_proc ptcoi_close remote_db
+        calling_proc mml_close remote_db
+        puts "\n ###Sleeping 30s to wait PLEX loading###\n"
+        sleep 30   
+        for {set cnt 0} {$cnt <= 5} {incr cnt} {
+          calling_proc mml_open_ex   remote_db
+           if {$remote_db(state) == "WO"} {
+              break
+           }            
+          calling_proc mml_close remote_db
+          sleep 20  
+         } 
+        if {$remote_db(state) != "WO"} {
+           send_user "\n ###ERROR### PLEX cannot start \n"
+        }
+        calling_proc mml_cmd_enhance remote_db "IOEXP" "IDENTITY"
+        append remote_db(report) "\n" $remote_db(cmd_output)
+        calling_proc mml_cmd_enhance remote_db "lamip" "CPUB BOOT IMAGE"
+        append remote_db(report) "\n" $remote_db(cmd_output)
+        calling_proc ptcoi_open   remote_db
+        calling_proc cpt_cmd_enhance remote_db "PTSRP:reg=fwlist" "CPHW DUMP"
+        append remote_db(report) "\n" $remote_db(cmd_output)
+   } else {
+      if {$remote_db(TR) =="RN"} {         
+        PrintStep "\t\t\tSTEP 9 : VERIFY ALL MIDDLEWARE VERSIONS \t\t\t@@@@"
+      }
+      if {$remote_db(run_from)== "9"} {                     
+      calling_proc  ssh_open  remote_db  
+      calling_proc mml_open_ex   remote_db
+      }
+      calling_proc mml_cmd_enhance remote_db "IOEXP" "IDENTITY"
+      append remote_db(report) "\n" $remote_db(cmd_output)
+      calling_proc mml_cmd_enhance remote_db "lamip" "CPHW DUMP"
+      append remote_db(report) "\n" $remote_db(cmd_output)
+   #   calling_proc mml_cmd_enhance remote_db "dphip" "HARDWARE IDENTITY"
+      calling_proc mml_cmd_enhance remote_db "dpwsp" "CP STATE"
+      calling_proc ptcoi_open   remote_db
+      calling_proc cpt_cmd_enhance remote_db "PTSRP:reg=fwlist" "CPHW DUMP"
+      append remote_db(report) "\n" $remote_db(cmd_output)
+   #   calling_proc cpt_cmd_enhance remote_db "PTHIP" "HARDWARE IDENTITY"
+    #  append remote_db(report) "\n" $remote_db(cmd_output)
+    #  calling_proc cpt_cmd_exec remote_db "PTHAP"
+    #  append remote_db(report) "\n" $remote_db(cmd_output)
+   }
+   calling_proc ptcoi_close remote_db
+   calling_proc mml_close   remote_db 
+}   
+
+ 
+#########################################################################
+# Name: excuteHappyTest()
+# Desc: check dpswi,dppai,dpses,fcsei
+# Author : xmanpha
+# Args: host_db args 
+#########################################################################
+proc excuteHappyTest { host_db args } {
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   global cmd_ouput
+#   PrintStep "\t\t\tSTEP 10 : EXCUTE HAPPY TEST\t\t\t@@@@"
+  if {$remote_db(run_from)== "10"} {                     
+   calling_proc  ssh_open  remote_db                         
+  }
+   calling_proc mml_open_ex   remote_db
+   calling_proc checkHappyTest remote_db "dpses"
+   calling_proc checkHappyTest remote_db "dppai"
+   calling_proc checkHappyTest remote_db "dpswi"
+   calling_proc checkHappyTest remote_db "dpswi"
+   calling_proc checkHappyTest remote_db "fcsei"
+   calling_proc mml_close   remote_db 
+}
+   
+#########################################################################
+# Name: downgradeSB()
+# Desc: check downgrade SB 
+# Author : xmanpha
+# Args: host_db args
+#########################################################################
+proc downgradeSB { host_db args } {      
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set spawn_id $remote_db(pid)
+   PrintStep "\t\t\tSTEP 13 : DOWNGRADE CPWH & PES DUMP ON CP SB SIDE IN DOUBLE SIDED SYSTEM\r\n\t\t\t              TO DEFAULT DUMPS \t\t\t@@@@"
+   if {[string length $args] == "0"} {
+      set args "B"
+   }
+   if {$remote_db(run_from)== "11"} {                     
+       calling_proc  ssh_open  remote_db                  
+      }
+
+   if {[string toupper $args] == "A"} {
+    log_file
+    set curtime [exec date {+DATE_%m-%d-%y_TIME_%H_%M_%S}]
+    log_file -noappend "$remote_db(log_dir)Downgrade_Aside_$remote_db(addr)_$curtime.log"
+   }
+   
+   calling_proc apg_ex_enhance remote_db "cfeted -v cur" "Current settings"
+   calling_proc apg_ex_enhance remote_db "cfeted -v bak" "Backup settings"
+   if {$remote_db(platform)=="L"} { 
+     calling_proc apg_ex_enhance remote_db "cfeted -b hw -s $args -lab " "cfeted"
+   } else {
+     calling_proc apg_ex_enhance remote_db "cfeted -b hw -s $args " "cfeted"
+   }  
+   if {$remote_db(run_from)!= "11"} { 
+     check_ouput "CPHW dump has been restored to the previous version." $remote_db(cmd_output)
+     }
+   if {$remote_db(platform)=="L"} {           
+      calling_proc apg_ex_enhance remote_db "cfeted -b pe -s $args -lab" "cfeted"
+   } else {
+      calling_proc apg_ex_enhance remote_db "cfeted -b pe -s $args" "cfeted"
+   }   
+#   if {$remote_db(run_from)!= "11"} { 
+#     check_ouput "cfeted" $remote_db(cmd_output)        
+#     check_ouput "PES dump has been restored to the previous version." $remote_db(cmd_output)
+#     }    
+   calling_proc apg_ex_enhance remote_db "cfeted -v cur" "Current settings"
+   calling_proc mml_open_ex remote_db
+   calling_proc ptcoi_open  remote_db
+   calling_proc cpt_cmd_enhance   remote_db  "ptwsp" "CP STATE"
+   calling_proc cpt_cmd_enhance   remote_db  "ptses" "EXECUTED"
+   calling_proc cpt_cmd_enhance   remote_db  "ptwsp" "CP STATE"
+   
+      
+   if {[string toupper $args] == "B"} {
+      set temp_check "CP-A EX"
+      set remote_db(SB) "B"   
+      if {[string match "*CP-B EX*" [string toupper $remote_db(cmd_output)]]} {   
+         calling_proc cpt_cmd_enhance   remote_db  "ptswi" "EXECUTED"
+         calling_proc cpt_cmd_enhance   remote_db  "ptwsp" "CP STATE"
+       }
+     }
+    if {[string toupper $args] == "A"} {
+       set temp_check "CP-B EX"
+       set remote_db(SB) "A"
+       if {[string match "*CP-A EX*" [string toupper $remote_db(cmd_output)]]} {
+       calling_proc cpt_cmd_enhance   remote_db  "ptswi" "EXECUTED"
+       calling_proc cpt_cmd_enhance   remote_db  "ptwsp" "CP STATE"
+      }
+     } 
+   check_ouput  $temp_check $remote_db(cmd_output)
+   calling_proc cpt_cmd_enhance   remote_db  "ptcpr" "EXECUTED"
+   calling_proc ptcoi_close remote_db
+   calling_proc  mml_close  remote_db
+   sleep 150
+   calling_proc telnet_cpub remote_db
+   calling_proc cpu_cmd_exec remote_db "\r"
+   calling_proc cpu_cmd_enhance remote_db "cat /etc/motd" "Label used"
+   calling_proc cpu_cmd_enhance remote_db "cat /dev/lzyinfo" "CPHW_LZY"
+   calling_proc cpu_cmd_exec remote_db "\r"
+   calling_proc cpu_cmd_enhance remote_db "cat /dev/imginfo" "CXC"
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/version" "Linux"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/cmdline" "root"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/meminfo" "MemTotal"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /proc/driver/exempt/meminfo" "exempt"
+   append remote_db(report) "\n" $remote_db(cmd_output)
+#   calling_proc cpu_cmd_enhance remote_db "cat /proc/cpuinfo" "processor"
+#   append remote_db(report) "\n" $remote_db(cmd_output)
+   calling_proc cpu_cmd_enhance remote_db "cat /etc/SuSE-release;env | grep CPHW_ATTR_* | sort;ps" "CXC_"
+   calling_proc cpu_cmd_exec remote_db "\r"
+   calling_proc cpu_cmd_enhance remote_db "date" "UTC"
+   calling_proc cpu_cmd_enhance remote_db "uname -a" "Linux"
+   calling_proc cpu_cmd_exec remote_db "\r"
+   calling_proc cpu_cmd_enhance remote_db "uptime" "load average"  
+   send "exit\r"
+   sleep 10
+   calling_proc mml_open_ex  remote_db
+   calling_proc ptcoi_open remote_db 
+   calling_proc cpt_cmd_enhance remote_db "PTSRP:reg=fwlist" "CPHW DUMP"
+#   calling_proc cpt_cmd_enhance remote_db "PTHIP" "HARDWARE IDENTITY"
+#   calling_proc cpt_cmd_exec remote_db "PTHAP"
+   calling_proc ptcoi_close remote_db
+   calling_proc mml_close   remote_db       
+#   calling_proc apg_ex_exec  remote_db cpfls 
+   calling_proc apg_ex_exec  remote_db bupidls -n $remote_db(relfsw)
+   calling_proc mml_open_ex  remote_db
+   calling_proc mml_cmd_enhance remote_db "SYBFP:FILE=RELFSW$remote_db(relfsw)" "BACKUP FILES"
+   calling_proc ptcoi_open remote_db
+   calling_proc cpt_ordered remote_db "ptcpl:file=relfsw$remote_db(relfsw),cs=$remote_db(SB)" "ORDERED"   
+   for {set i 1} {$i <= 6} {incr i} {
+    calling_proc cpt_cmd_exec remote_db "ptsri:start"
+    if {[string match "*EXECUTED*" [string toupper $remote_db(cmd_output)]]} {
+      break
+    }
+    if {$i == 6} {
+     send_user "\n ##### ERROR ptsri:start cannot executed \n"
+    }
+    puts "\n -------Waiting 10s for rerunning ptsri:start---------- \n"
+    sleep 10
+   } 
+   puts "\n ----------Waiting 55s for plex loading----------- \n"   
+   sleep 60
+   calling_proc cpt_send_enter remote_db 2
+   calling_proc cpt_cmd_enhance remote_db "ptwsp" "ptwsp"      
+   calling_proc ptcoi_close remote_db
+   calling_proc mml_cmd_enhance remote_db "lamip" "CPHW DUMP"    
+   calling_proc mml_close   remote_db 
+   # Get APG time end
+   if {[string toupper $remote_db(TR)] == "HT" } {       
+       if {$remote_db(platform)=="W"} {
+          calling_proc  apg_cmd_exec remote_db "echo %time:~0,5%"              
+       } else {
+          calling_proc  apg_cmd_exec remote_db "date +\"%H%M\""
+       }     
+       set cnt [exec echo $remote_db(cmd_output) | wc | awk {{print$1}}]
+       set cnt [expr {$remote_db(platform) eq "W"? $cnt -2 : $cnt -1}]          
+       set temp [exec echo $remote_db(cmd_output) | awk {NR==invar {print$1}} invar=$cnt]
+       set temp [string trim $temp]
+       regsub -all ":" $temp "" temp
+       if {[string length $temp]==3} {
+          set temp "0$temp"
+       }        
+       set remote_db(apgtimeend) $temp        
+    }
+   
+   
+   if {[string toupper $args] == "A"} {
+     log_file
+     if {$remote_db(run_from) == "0"} {
+       log_file "$remote_db(log_dir)$remote_db(logfile)"
+    } else {
+       log_file "$remote_db(log_dir)CONTINUE_$remote_db(logfile)"
+       }     
+    }
+ } 
+#########################################################################
+# Name: downgradeBC()
+# Desc: check downgrade BC 
+# Author : xmanpha
+# Args: host_db args
+#########################################################################
+proc downgradeBC { host_db args } {      
+   upvar $host_db remote_db
+   global expect_out
+   global local_host
+   set spawn_id $remote_db(apgpid)
+   PrintStep "\t\t\tSTEP 13 : DOWNGRADE CPWH & PES DUMP ON BLADE IN BLADE SYSTEM\r\n    \t\t\t          TO DEFAULT DUMPS \t\t\t@@@@"
+   if {$remote_db(run_from)== "7"} {                     
+       calling_proc  ssh_open  remote_db
+       set remote_db(apgpid) $spawn_id                         
+      }
+   calling_proc apg_ex_enhance remote_db "cfeted -v cur" "Current settings"
+   calling_proc apg_ex_enhance remote_db "cfeted -v bak" "Backup settings"
+   if {$remote_db(platform)=="L"} {
+      calling_proc apg_ex_enhance remote_db "cfeted -b hw -lab" "cfeted"     
+   } else {    
+      calling_proc apg_ex_enhance remote_db "cfeted -b hw" "cfeted"
+    }   
+  if {$remote_db(run_from)!= "7"} { 
+     check_ouput "CPHW dump has been restored to the previous version." $remote_db(cmd_output)
+   }
+   
+   if {$remote_db(platform)=="L"} {         
+      calling_proc apg_ex_exec remote_db cfeted -b pe -lab
+    } else {
+      calling_proc apg_ex_exec remote_db cfeted -b pe
+    }  
+  if {$remote_db(run_from)!= "7"} {    
+    check_ouput "cfeted " $remote_db(cmd_output)
+   }
+   calling_proc apg_ex_enhance remote_db "cfeted -v cur" "Current settings"
+   set remote_db(order) "7"
+   calling_proc RebootNconnectBC remote_db
+   set remote_db(TR) "Downgrade"
+   calling_proc RestartPlexDump remote_db
+   calling_proc ptcoi_close remote_db
+   calling_proc mml_close   remote_db
+   puts "\n ###Waiting 30s for PLEX loading###\n"
+   sleep 30
+   for {set cnt 0} {$cnt <= 5} {incr cnt} {
+          calling_proc mml_open_ex   remote_db
+           if {$remote_db(state) == "WO"} {
+              break
+           }           
+          calling_proc mml_close remote_db
+          puts "\n ###Continue sleeping 20s to wait PLEX loading###\n"
+          sleep 20  
+         }  
+   calling_proc mml_cmd_enhance remote_db "lamip" "CPUB BOOT IMAGE"  
+   calling_proc mml_cmd_enhance remote_db "IOEXP" "IDENTITY"  
+   calling_proc mml_close   remote_db
+   
+   # Get APG time end     
+   if {$remote_db(platform)=="W"} {
+      calling_proc  apg_cmd_exec remote_db "echo %time:~0,5%"              
+   } else {
+      calling_proc  apg_cmd_exec remote_db "date +\"%H%M\""
+   }     
+   set cnt [exec echo $remote_db(cmd_output) | wc | awk {{print$1}}]
+   set cnt [expr {$remote_db(platform) eq "W"? $cnt -2 : $cnt -1}]          
+   set temp [exec echo $remote_db(cmd_output) | awk {NR==invar {print$1}} invar=$cnt]
+   set temp [string trim $temp]
+   regsub -all ":" $temp "" temp
+   if {[string length $temp]==3} {
+      set temp "0$temp"
+   } 
+   
+   set remote_db(apgtimeend) $temp        
+   set remote_db(TR) "HT"
+ }  
+  
+ 

@@ -1,0 +1,709 @@
+#!/usr/bin/env expect
+
+
+###########################################################################
+# SCRIPT:   ai4log.exp
+# AUTHOR:   teigibo
+# DATE:     05-05-2022
+# REV:      PA1
+# PURPOSE:  tool to support log grabbing from AXE/MSC nodes
+#
+###########################################################################
+
+######################################################################################
+###Load library
+######################################################################################
+
+source ./cphw_libs.exp
+######################################################################################
+###Define global variable
+######################################################################################
+
+
+
+proc parseargs {argv argc} {
+
+#    upvar $env
+    global env
+
+    set blnuser "0"
+    set blnpass "0"  
+    global usr
+    set usr ""
+    global pass
+    set pass ""
+    global rootpass
+    set rootpass ""
+    global stp 
+    set stp ""
+    global nmp
+    set nmp ""
+    global srdir
+    set srdir ""
+    global fname
+    set fname ""
+    global plf
+    # "L" apg linux based; "W" apg window based
+    set plf "L" 
+    global cptp
+    set cptp "" 
+    global operation
+    set operation ""
+    global force
+    set force "0"
+    global dstdir
+    set dstdir "."
+
+    set lsOpt "-a -u -p -cp -d -s "
+
+
+    set env(Platform) "L"
+
+    foreach {key val} $argv {
+        send_user "\n $key $val \n" 
+        switch -exact -- $key {
+
+	    "-a" {
+		set strVal $val
+		if {[string match "*$strVal*" $lsOpt]} {
+		    send_user "\n Wrong input apgname/address\n" 
+		    send_user "Usage :\n./ai4log -a apgAddr -u user -p passed -o operation\n" 
+		    send_user "EX:./ai4log -a 10.116.0.1 -u ts_comem -p fake.2000 -o mktrapglog\n"
+		    exit
+		}
+		set stp $strVal
+		set env(STPIPADDRESS) $strVal
+                send_user "\n -a $stp $env(STPIPADDRESS)\n" 
+	    }
+	    "-u" {
+		set strVal [string tolower $val]
+		if {[string match "*$strVal*" $lsOpt]} {
+		    send_user "\n Wrong input username \n" 
+		    send_user "Usage :\n./ai4log -a apgAddr -u user -p passed -o operation\n" 
+		    send_user "EX:./ai4log -a 10.116.0.1 -u ts_comem -p fake.2000 -o mktrapglog\n"
+		    exit
+		} 
+		set blnuser "1"
+		set usr $strVal
+		set env(STPUSERNAME) $strVal
+                send_user "\n -u $usr\n" 
+	    }
+	    "-p" {
+		set strVal $val
+		if {[string match "*$strVal*" $lsOpt]} {
+		    send_user "\n wrong input password \n" 
+		    send_user "Usage :\n./ai4log -a apgAddr -u user -p passed -o operation\n" 
+		    send_user "EX:./ai4log -a 10.116.0.1 -u ts_comem -p fake.2000 -o mktrapglog\n"
+		    exit  
+		}
+		set blnpass "1"
+		set pass $strVal
+		set env(STPPASSWORD) $strVal
+#		set env(STPROOTPASSWD) $strVal
+		send_user "\n -p $pass\n" 
+	    }
+	    "-d" {
+		set strVal $val 
+#		regsub -all {\\} $val {\/} temp
+		if {[string match "*$strVal*" $lsOpt]} {
+		    send_user "\n Wrong input directory/file location \n"                
+		    send_user "Usage :\n./ai4log -a apgAddr -u user -p passed -o operation\n" 
+		    send_user "EX:./ai4log -a 10.116.0.1 -u ts_comem -p fake.2000 -o mktrapglog\n"
+		    exit                  
+		}       
+		set dstdir $strVal
+		send_user "\n -d $dstdir\n" 
+	    }
+	    "-o" {
+		set strVal [string tolower $val]
+		if {[string match "*$strVal*" $lsOpt]} {
+		    send_user "\n Wrong operation \n" 
+		    send_user "Usage :\n./ai4log -a apgAddr -u user -p passed -o operation\n" 
+		    send_user "EX:./ai4log -a 10.116.0.1 -u ts_comem -p fake.2000 -o mktrapglog\n"
+		    exit
+		} 
+		set operation $strVal
+                send_user "\n -u $operation\n"
+	    }
+        }
+    }
+}
+
+
+
+##===================================== sftp function================================## 
+#Check Plex dump of Linux    
+proc upload { usr pass plf stp srdir fname} { 
+    set usr $usr
+    set stp $stp 
+    set pass $pass
+    set plf $plf
+    set fname $fname
+    set dt50 ""
+    set dirplex ""
+    if {![string match "*.zi*" $fname]} {
+	send_user "\n Selected file is not zip file , Please select again \n"
+	exit          
+    } else {
+	set ctFile [exec zipinfo $srdir\/$fname]
+	if {![string match "*BUINFO*" $ctFile]} {
+	    send_user "\n Plex is not correct , don't find out BUINFO file"
+	    exit         
+	} 
+    }   
+    #Open sftp       
+    eval spawn sftp $usr@$stp
+    set timeout 100
+    expect {
+	# Confirm  command
+	-re "(continue connecting )(.*?)" {
+	    send "yes\r"
+	    exp_continue
+	}
+	-re "\[Pp]assword:" {
+	    send "$pass\r"
+	    exp_continue
+	}
+	-re "(.*)sftp>" {
+	}      
+	eof {
+	    error "Shutdown in remote host \n"
+	}
+	timeout {
+	    error " Timeout in local host\n"
+	}
+    }
+    send "cd \/ \r"
+    expect "*sftp>"
+    send "ls \r"
+    expect "*sftp>"
+    if {[string match "*G:*" $expect_out(0,string)]} {
+	set dirplex "/g:/ftpvol/cphw"
+	set dt50 1
+    }         
+    send "lcd $srdir \r"
+    expect "*sftp>"
+
+    # cd destination location  
+    global apgdir
+    if {[string toupper $plf] == "W"} {
+	if {$dt50!=1} {
+	    set dirplex "/k:/ftpvol/cphw" 
+	}             
+	send "ls $dirplex \r"
+	expect "*sftp>"
+	if {![string match "*ptem*" $expect_out(0,string)]} {
+	    send "mkdir $dirplex/ptem \r"
+	    expect "*sftp>" 
+	}                        
+	set apgdir "$dirplex/ptem"        
+    } else {
+	set apgdir "/cp/files"  
+    }
+    send "cd $apgdir \r"   
+    
+
+    # Send file         
+    
+    expect { 
+	-re "(.*)sftp>" {
+	    if {[string match "*No such file or directory*" $expect_out(0,string) ]} {
+		send_user " \n WRONG APG directory \n"
+		exit
+            }
+        }
+	timeout {
+	    error " Timeout in local host \n"
+	}
+    }
+    
+    send "ls \r"
+    expect "sftp>" 
+    
+    if {![string match "*$fname*" $expect_out(0,string)]} {                                                                                                    
+	send "put $fname ./ \r"
+	expect "sftp>" 
+    } else {
+	send_user "\n Plex dump is available on $stp \n"
+    }
+    send "ls $apgdir\/$fname \r"
+    expect { 
+	-re "(.*)sftp>" {
+	    if {[string match "*No such file or directory*" $expect_out(0,string) ]} {
+		send_user " \n File does not exist in $apgdir \n"
+		exit
+            }
+        }
+	timeout {
+	    error " Timeout in local host \n"
+	}
+    }
+    send "exit\r"                        
+}
+
+#Download a file from STP to local dire
+proc download { usr pass plf stp srdir fname destdir} { 
+    set usr $usr
+    set stp $stp 
+    set pass $pass
+    set plf $plf
+    set fname $fname
+    set dt50 ""
+    set dirplex ""
+
+    #Open sftp       
+    eval spawn sftp $usr@$stp
+    set timeout 100
+    expect {
+	# Confirm  command
+	-re "(continue connecting )(.*?)" {
+	    send "yes\r"
+	    exp_continue
+	}
+	-re "\[Pp]assword:" {
+	    send "$pass\r"
+	    exp_continue
+	}
+	-re "(.*)sftp>" {
+	}      
+	eof {
+	    error "Shutdown in remote host \n"
+	}
+	timeout {
+	    error " Timeout in local host\n"
+	}
+    }
+    send "cd \/ \r"
+    expect "*sftp>"
+    send "ls \r"
+    expect "*sftp>"
+
+    # cd destination location  
+    #    send "lcd $srdir \r"
+    #    expect "*sftp>"
+
+
+    # Get file       
+    send "cd $srdir \r"
+    expect "sftp>" 
+    send "ls \r"
+    expect "sftp>" 
+    
+    if {![string match "*$fname*" $expect_out(0,string)]} {                                                                                           #        set timeout 300 
+	send "lcd $destdir \r"
+	expect "*sftp>"
+	send "get $fname ./ \r"
+	expect { 
+	    -re "(.*)sftp>" {
+		if {[string match "*No such file or directory*" $expect_out(0,string) ]} {
+		    send_user " \n File does not exist in $apgdir \n"
+		    exit
+		}
+	    }
+	    "$fname" {
+		exp_continue
+		send_user "continuo\n"
+	    }
+	    eof {
+		send "bye\r"
+	    }
+	    timeout {
+		error " Timeout while get file in local host \n"
+	    }
+	}
+    }
+    send "exit\r"                        
+}
+
+
+
+proc cmdhwcls { } {
+    global glob_info
+
+    calling_proc  ssh_open glob_info
+    calling_proc  apg_cmd_enhance glob_info "hwcls" "HARDWARE CONFIGURATION"
+
+#    apg_cmd_enhance $command(1) "HARDWARE CONFIGURATION" $prompt $ss "1000"
+    set filemy [exec echo $glob_info(cmd_output) | grep "APUB" ]
+    send_user "\n  $filemy\n" 
+#    set filemy [exec echo $glob_info(cmd_output) | grep -o "18\\w*\\b.*" ]
+
+}
+
+
+proc makecoplog { } {
+    global usr pass plf stp glob_info dstdir
+
+    send_user "\n make cop log\n" 
+    append cpdir "/data/apz/data/cpa "
+    append cpdir "/data/apz/data/cpb "
+    append cpdir "/data/apz/data/mau "
+
+    send_user "\n $cpdir\n" 
+
+    set command(1) "tar czvf cop.tar.gz $cpdir"
+    set command(2) "mv cop.tar.gz  /data/opt/ap/internal_root/support_data"
+    set command(3) "chmod 777 /data/opt/ap/internal_root/support_data/cop.tar.gz"
+    
+    calling_proc  ssh_open glob_info
+
+    set glob_info(timeout)       "1000"
+
+    calling_proc  apg_cmd_enhance glob_info $command(1) "tar" 
+    calling_proc  apg_cmd_enhance glob_info $command(2) "mv" 
+    calling_proc  apg_cmd_enhance glob_info $command(3) "chmod" 
+    set srdir "/support_data"
+    set fname "cop.tar.gz"
+
+    download $usr $pass $plf $stp $srdir $fname $dstdir
+
+}
+
+proc makecoplog2 { } {
+    global usr pass plf stp glob_info dstdir env
+
+#$env(AP_STARTTIME)
+#$env(AP_STARTDATE)
+#$env(AP_STOPTIME)
+#$env(AP_STOPDATE)
+
+    send_user "\n make cop log2\n" 
+    send_user "\n ciao  $env(AP_STARTTIME)\n"
+
+    set command(1) "mkdir -p spxcop; rm -rf spxcop/*"
+
+    set timing " -a $env(AP_STARTTIME) -e $env(AP_STARTDATE) -b $env(AP_STOPTIME) -f $env(AP_STOPDATE) "
+    if {"$env(CLHLS)"=="new"} {
+	set timing " -u -a $env(CP_STARTTIME) -e $env(CP_STARTDATE) -b $env(CP_STOPTIME) -f $env(CP_STOPDATE) "
+    }
+
+######
+    set command(2) "clhls $timing  -m apa > spxcop/maus_apa.log"
+    set command(3) "clhls $timing  -m apb > spxcop/maus_apb.log"
+    set command(4) "clhls $timing  -m cpa > spxcop/maus_cpa.log"
+    set command(5) "clhls $timing  -m cpb > spxcop/maus_cpb.log"
+    set command(6) "clhls $timing  -m ALL > spxcop/maus_all.log"
+
+    set command(7) "clhls -s cpa $timing  event > spxcop/cpa_event.log"
+    set command(8) "clhls -s cpa $timing  error > spxcop/cpa_error.log"
+    set command(9) "clhls -s cpa $timing  sys > spxcop/cpa_sys.log"
+    set command(10) "clhls -s cpa $timing  sel > spxcop/cpa_sel.log"
+    set command(11) "clhls -s cpa $timing  > spxcop/cpa_all.log"
+
+    set command(12) "clhls -s cpb $timing  event > spxcop/cpb_event.log"
+    set command(13) "clhls -s cpb $timing  error > spxcop/cpb_error.log"
+    set command(14) "clhls -s cpb $timing  sys > spxcop/cpb_sys.log"
+    set command(15) "clhls -s cpb $timing  sel > spxcop/cpb_sel.log"
+    set command(16) "clhls -s cpb $timing  > spxcop/cpb_all.log"
+
+    set command(17) "clhls $timing  > spxcop/COP_all.log"
+########
+
+
+#    set command(1) "tar czvf cop.tar.gz $cpdir"
+#    set command(2) "mv cop.tar.gz  /data/opt/ap/internal_root/support_data"
+#    set command(3) "chmod 777 /data/opt/ap/internal_root/support_data/cop.tar.gz"
+    
+    calling_proc  ssh_open glob_info
+
+    set glob_info(timeout)       "1000"
+
+    calling_proc  apg_cmd_enhance glob_info $command(1) "mkdir" 
+
+    for {set i 2} {$i < 18} {incr i} {
+	calling_proc  apg_cmd_enhance glob_info $command($i) "clhls" 
+    }
+
+    calling_proc apg_cmd_enhance glob_info "tar czvf cop.tar.gz spxcop" "tar"
+    calling_proc apg_cmd_enhance glob_info "mv cop.tar.gz  /data/opt/ap/internal_root/support_data" "mv"
+    calling_proc apg_cmd_enhance glob_info "chmod 777 /data/opt/ap/internal_root/support_data/cop.tar.gz" "chmod"
+
+    send_user "\n make cp log2 end\n" 
+
+#    calling_proc  apg_cmd_enhance glob_info $command(3) "chmod" 
+    set srdir "/support_data"
+    set fname "cop.tar.gz"
+
+    download $usr $pass $plf $stp $srdir $fname $dstdir
+
+}
+
+
+proc makeclhtran { } {
+    global usr pass plf stp glob_info dstdir env
+
+#$env(AP_STARTTIME)
+#$env(AP_STARTDATE)
+#$env(AP_STOPTIME)
+#$env(AP_STOPDATE)
+
+    send_user "\n make clhtran\n" 
+    send_user "\n ciao  $env(AP_STARTTIME)\n"
+
+    set ddir "/data/opt/ap/internal_root/support_data"
+    set timing " -a $env(AP_STARTTIME) -e $env(AP_STARTDATE) -b $env(AP_STOPTIME) -f $env(AP_STOPDATE) "
+    if {"$env(CLHLS)"=="new"} {
+	set timing " -u -a $env(CP_STARTTIME) -e $env(CP_STARTDATE) -b $env(CP_STOPTIME) -f $env(CP_STOPDATE) "
+
+    }
+
+######
+
+    set command(1) "clhtran -t file $timing "
+    set command(2) "clhtran -t file $timing -m all"
+    set command(3) "clhtran -t file -cp cp1 $timing -m all"
+    set command(4) "clhtran -t file -cp cp2 $timing -m all"
+
+########
+
+    calling_proc  ssh_open glob_info
+
+    set glob_info(timeout)       "1000"
+
+    # save any existing clh_files, the list will be used in the next to
+    # identify the new generated clh_files 
+    calling_proc apg_cmd_enhance glob_info "ls $ddir/clh_files_* > $ddir/clhlist.txt " "ls"
+
+    for {set i 1} {$i < 4} {incr i} {
+	calling_proc  apg_cmd_enhance glob_info $command($i) "clhtran" 
+    }
+
+
+    # here the new clh_file list is obtainted via grep utility (combined options -f and -F)
+    # file2move.txt will contains the list of files to be transfer from STP to jenkins node
+    calling_proc apg_cmd_enhance glob_info "ls $ddir/clh_files_* |grep -Fxvf $ddir/clhlist.txt > $ddir/files2move.txt " "ls"
+    calling_proc apg_cmd_enhance glob_info "chmod 777 $ddir/files2move.txt" "chmod"
+
+    send_user "\n makeclhtran end\n" 
+
+#    calling_proc  apg_cmd_enhance glob_info $command(3) "chmod" 
+    set srdir "/support_data"
+    set fn1 "files2move.txt"
+    download $usr $pass $plf $stp $srdir $fn1 $dstdir
+
+    set f [open $dstdir/$fn1]
+    set lista [split [read $f] "\n"]
+    close $f
+
+# the list of files inside of files2move.txt are transferred to jenkins 
+# Iterate over the lista
+    foreach pathdir $lista {
+	set fn [file tail $pathdir]
+        send_user "\n ciao  $fn\n"
+	download $usr $pass $plf $stp $srdir $fn $dstdir
+    }
+
+#    set apgtime [ exec echo $glob_info(cmd_output) | grep -A1 "date" | tail -n1 ]
+#    exec echo APT=$apgtime  >> $dstdir/deltatime.txt
+
+}
+
+
+
+
+
+
+
+proc makecplog { } {
+
+    global usr pass plf stp prt prompt ss output dstdir glob_info
+
+    send_user "\n make cp log\n" 
+
+    calling_proc  ssh_open glob_info
+
+    calling_proc mml_open  glob_info
+
+#    if {$glob_info(state) == "WO"} {
+#	calling_proc mml_cmd_enhance glob_info "lamip" "CPUB BOOT IMAGE"
+
+
+    exec echo "" > $dstdir/cplogs.txt
+#    set DATE [exec date +%y%m%d-%H%M ]
+#    send_user " \n $DATE \n"
+#    set DATE [exec date +%y%m%d-%H%M ]
+#    send_user " \n $DATE \n"
+
+
+     calling_proc mml_cmd_enhance glob_info "IOEXP" "IDENTITY"
+    exec echo $glob_info(cmd_output) >> $dstdir/cplogs.txt
+
+
+      calling_proc mml_cmd_enhance glob_info "lamip" "CPUB BOOT IMAGE"
+#        calling_proc mml_cmd_exec glob_info "lamip"
+    exec echo $glob_info(cmd_output) >> $dstdir/cplogs.txt
+
+
+#     calling_proc cpt_cmd_enhance  glob_info "ptwsp" "CP STATE"
+#    exec echo $glob_info(cmd_output) >> cplogs.txt
+
+
+#      calling_proc cpt_cmd_enhance  glob_info "ptwsp" "QUORUM-STATE"
+#    exec echo $glob_info(cmd_output) >> cplogs.txt
+
+     calling_proc mml_cmd_exec glob_info "allip"
+    exec echo $glob_info(cmd_output) >> $dstdir/cplogs.txt
+
+        calling_proc mml_cmd_exec glob_info "syrip:survey"
+    exec echo $glob_info(cmd_output) >> $dstdir/cplogs.txt
+
+        calling_proc mml_cmd_exec glob_info "DIECP:INF=SPO"
+    exec echo $glob_info(cmd_output) >> $dstdir/cplogs.txt
+
+        calling_proc mml_cmd_exec glob_info "DIECP:INF=PAR"
+    exec echo $glob_info(cmd_output) >> $dstdir/cplogs.txt
+
+        calling_proc mml_cmd_exec glob_info "dircp"
+    exec echo $glob_info(cmd_output) >> $dstdir/cplogs.txt
+
+#	calling_proc cpt_cmd_enhance glob_info "ptwsp" "CPT MESSAGE"
+#    }
+}
+
+
+proc deltatime { } {
+
+    global usr pass plf stp prt prompt ss output dstdir glob_info
+
+    send_user "\n delta time\n" 
+
+# Jenkins Time
+    set DATE [exec date "+%Y%m%d %H:%M:%S" ]
+    exec echo JKT=$DATE  > $dstdir/deltatime.txt
+
+# AP Time
+    calling_proc ssh_open glob_info
+    calling_proc apg_cmd_enhance glob_info "date '+%Y%m%d %H:%M:%S'" "date"
+    set apgtime [ exec echo $glob_info(cmd_output) | grep -A1 "date" | tail -n1 ]
+    exec echo APT=$apgtime  >> $dstdir/deltatime.txt
+
+# CP Time    
+    calling_proc mml_open glob_info
+    calling_proc mml_cmd_enhance glob_info "CACLP" "TIME"
+    set cptime [exec echo $glob_info(cmd_output) | grep -A1 "DATE     TIME     SUMMERTIME" | tail -n1 | awk "{ print \$1\" \"\$2 }" | sed "s/./\&:/9;s/./\&:/12" ]
+    exec echo CPT=$cptime  >> $dstdir/deltatime.txt
+}
+
+
+
+proc mktrapglog {  } {
+    global usr pass plf stp dstdir glob_info
+
+    set DATE [exec date +%y%m%d-%H%M ]
+    send_user " \n $DATE \n"
+    set command(1) "mktr"
+
+    calling_proc  ssh_open glob_info
+
+    set glob_info(timeout)       "1000"
+    calling_proc  apg_cmd_enhance glob_info $command(1) "Started collecting"
+    set myfile [exec echo $glob_info(cmd_output) | grep -o "/support\\w*\\b.*" ]
+
+    send_user " \n $myfile \n"
+
+    set tpos [llength [split $myfile "\/"]]
+    set lssplit [split $myfile "\/"]
+    set lssplit [lreplace $lssplit [expr $tpos - 1] [expr $tpos - 1]]
+    # Get locations to exec sftp
+    set srdir [join $lssplit "\/"]
+    set fname [lindex [split $myfile "\/"] [expr $tpos - 1]]
+    send_user "\n -d $srdir $fname\n" 
+
+    download $usr $pass $plf $stp $srdir $fname $dstdir
+
+}
+
+#===================================END OF LIBRARY====================================================#
+
+
+#===================================EXECUTING=========================================================#
+
+#foreach Name {"Node" "Port" "CSport" "Defaultdump" "HAPPYTEST_DUMPS" "PlexNum" "CP_NAME" "ScriptDir" "SOFT_SIDE_SWITCH"} {
+
+set prin [parseargs $argv $argc] 
+set lin  [split $prin ";"]
+
+
+set local_host   "[exec hostname]"
+set host_prompt  "(.*)\r\n\r\n(.*>)$"
+set ftp_prompt   "(.*)(sftp> )$"
+set mml_prompt   "(.*)(<)"
+set cpt_prompt   "(.*)(cpt)(.*)<"
+set node_prompt  "(.*)(\r\ncpub)(.*:.*#)|(.*)(\r\ncpub)(.*:.*#)(.*)$"
+
+
+send_user "\n $prin $lin \n" 
+
+foreach Name {"STPIPADDRESS" "Platform" "STPPASSWORD" "STPROOTPASSWD" "STPUSERNAME" } {
+   if {[info exist env($Name)] == "0"} {
+      set env($Name) ""
+   }
+}
+
+set glob_info(addr)        $env(STPIPADDRESS)
+set glob_info(platform)    "L"
+set glob_info(pass)        $env(STPPASSWORD)
+set glob_info(rootpass)    "Administrator1@"
+#set glob_info(rootpass)    $env(STPROOTPASSWD) 
+if {$glob_info(platform)=="L"} {
+   set glob_info(user)        $env(STPUSERNAME)         
+} else {
+   set glob_info(user)        "Administrator"    
+}
+set glob_info(port)         "4422"
+set glob_info(timeout)       "800"
+set glob_info(host_prompt)   $host_prompt
+set glob_info(mml_prompt)    $mml_prompt
+set glob_info(node_prompt)   $node_prompt
+set glob_info(cpt_prompt)    $cpt_prompt
+
+set host_prompt_Linux  "(.*):\u0003(.*)$"
+set glob_info(host_prompt) $host_prompt_Linux 
+
+
+set prt "(.*)\r\n(.*>)$|(.*):\u0003(.*)$"
+set ss ""
+
+
+
+switch -exact -- $operation {
+
+    "cmdhwcls" {
+	send_user "\n hwcls\n"
+	cmdhwcls 
+    }
+
+    "mktrapglog" {
+	send_user "\n get APG LOG\n"
+	mktrapglog 
+    }
+
+    "makecplog" {
+	send_user "\n Get CP log\n"
+	makecplog 
+    }
+
+    "makecoplog" {
+	send_user "\n Get COP log\n"
+	makecoplog 
+    }
+
+    "makecoplog2" {
+	send_user "\n Get COP log2\n"
+	makecoplog2 
+    }
+
+    "makeclhtran" {
+	send_user "\n Get COP log2\n"
+	makeclhtran 
+    }
+
+    "deltatime" {
+	send_user "\n Get delta time\n"
+	deltatime
+    }
+
+}
+
+
+

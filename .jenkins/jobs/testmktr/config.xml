@@ -1,0 +1,347 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.collabnet.actionhub.Tagger plugin="collabnet@2.0.6">
+      <globalOverride>false</globalOverride>
+      <manual>false</manual>
+      <workitem>false</workitem>
+      <build>false</build>
+      <review>false</review>
+      <commit>false</commit>
+      <custom>false</custom>
+      <customMessages></customMessages>
+    </hudson.plugins.collabnet.actionhub.Tagger>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>10</daysToKeep>
+        <numToKeep>20</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.29">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.plugins.throttleconcurrents.ThrottleJobProperty plugin="throttle-concurrents@2.0.1">
+      <maxConcurrentPerNode>0</maxConcurrentPerNode>
+      <maxConcurrentTotal>0</maxConcurrentTotal>
+      <categories class="java.util.concurrent.CopyOnWriteArrayList"/>
+      <throttleEnabled>true</throttleEnabled>
+      <throttleOption>project</throttleOption>
+      <limitOneJobWithMatchingParams>false</limitOneJobWithMatchingParams>
+      <paramsToUseForLimit></paramsToUseForLimit>
+    </hudson.plugins.throttleconcurrents.ThrottleJobProperty>
+    <de.pellepelster.jenkins.walldisplay.WallDisplayJobProperty plugin="jenkinswalldisplay@0.6.34"/>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>AI_LINUX</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <jenkins.triggers.ReverseBuildTrigger>
+      <spec></spec>
+      <upstreamProjects>triggerjob_node2,triggerjob_node3,triggerjob_old,</upstreamProjects>
+      <threshold>
+        <name>FAILURE</name>
+        <ordinal>2</ordinal>
+        <color>RED</color>
+        <completeBuild>true</completeBuild>
+      </threshold>
+    </jenkins.triggers.ReverseBuildTrigger>
+  </triggers>
+  <concurrentBuild>true</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#!/usr/bin/env bash
+
+echo &quot;STPNAME = $STPIPADDRESS&quot;
+echo &quot;USER = $STPUSERNAME&quot;
+
+echo &quot;AP_STARTTIME = $AP_STARTTIME&quot;
+
+echo &quot;CLHLS&quot; = $CLHLS
+
+#echo &quot;${params.seleziona}&quot;
+#echo &quot;${params.JOB_NAME}&quot;
+
+#======================================= THIS JOB IS START ================================================
+cd $ScriptDir
+
+#exit
+
+export STPIPADDRESS
+export STPUSERNAME
+export STPPASSWORD
+export CLHLS
+
+
+# we consider the start time tied to the triggering script start...
+# AP_STARTTIME and AP_STARTDATE are Jenkins reference time.
+# in really we need to be sure that jenkins server time is aligned to ap time
+export AP_STARTTIME
+export AP_STARTDATE
+echo &quot;AP_STARTTIME:&quot; $AP_STARTTIME
+echo &quot;AP_STARTDATE:&quot; $AP_STARTDATE
+
+#start/stop time with reference to Jenkins server in seconds
+jkstartime=&quot;$(date -d$JOB_STARTTIME +%s)&quot;
+jkstoptime=&quot;$(date -d$JOB_FINISHTIME +%s)&quot;
+
+echo &quot;jkstartime:&quot; $jkstartime
+echo &quot;jkstoptime:&quot; $jkstoptime
+
+
+mkdir -p $LogsDir
+
+./ai.exp  -a $STPIPADDRESS -u $STPUSERNAME -p $STPPASSWORD -o deltatime -d $LogsDir
+
+pushd $LogsDir
+JKT=&quot;$(date -d&quot;`cat deltatime.txt | grep JKT | cut -d &quot;=&quot; -f2`&quot; +%s)&quot;
+APT=&quot;$(date -d&quot;`cat deltatime.txt | grep APT | cut -d &quot;=&quot; -f2`&quot; +%s)&quot;
+CPT=&quot;$(date -d&quot;`cat deltatime.txt | grep CPT | cut -d &quot;=&quot; -f2`&quot; +%s)&quot;
+
+if [ -z &quot;$CPT&quot; ]
+then
+  echo &quot;\$CPT is NULL&quot;
+  CPT=$APT
+fi
+
+
+popd
+
+# we can consider the stop time of test case when we run this script
+echo &quot;JKT:&quot; $JKT
+echo &quot;APT:&quot; $APT
+echo &quot;CPT:&quot; $CPT
+
+DeltaJA=$((JKT-APT))
+DeltaJC=$((JKT-CPT))
+echo &quot;DeltaJA:&quot; $DeltaJA
+echo &quot;DeltaJC:&quot; $DeltaJC
+
+
+# CP time start/stop with CP time reference
+CP_START=$((jkstartime-DeltaJC))
+#CP_STOP=$((jkstoptime-DeltaJC))
+CP_STOP=$CPT
+echo &quot;CP_START:&quot; $CP_START
+echo &quot;CP_STOP:&quot; $CP_STOP
+
+export CP_STOPTIME=$(date -d@$CP_STOP +&quot;%H%M&quot;)
+export CP_STOPDATE=$(date -d@$CP_STOP +&quot;%Y%m%d&quot;)
+
+export CP_STARTTIME=$(date -d@$CP_START +&quot;%H%M&quot;)
+export CP_STARTDATE=$(date -d@$CP_START +&quot;%Y%m%d&quot;)
+echo &quot;CP_STARTTIME:&quot; $CP_STARTTIME
+echo &quot;CP_STARTDATE:&quot; $CP_STARTDATE
+echo &quot;CP_STOPTIME:&quot; $CP_STOPTIME
+echo &quot;CP_STOPDATE:&quot; $CP_STOPDATE
+
+
+
+# AP time start/stop with AP time reference
+AP_START=$((jkstartime-DeltaJA))
+#AP_STOP=$((jkstoptime-DeltaJA))
+AP_STOP=$APT
+echo &quot;AP_START:&quot; $AP_START
+echo &quot;AP_STOP:&quot; $AP_STOP
+
+export AP_STOPTIME=$(date -d@$AP_STOP +&quot;%H%M&quot;)
+export AP_STOPDATE=$(date -d@$AP_STOP +&quot;%Y%m%d&quot;)
+
+export AP_STARTTIME=$(date -d@$AP_START +&quot;%H%M&quot;)
+export AP_STARTDATE=$(date -d@$AP_START +&quot;%Y%m%d&quot;)
+echo &quot;AP_STARTTIME:&quot; $AP_STARTTIME
+echo &quot;AP_STARTDATE:&quot; $AP_STARTDATE
+echo &quot;AP_STOPTIME:&quot; $AP_STOPTIME
+echo &quot;AP_STOPDATE:&quot; $AP_STOPDATE
+
+
+
+# on MW logs the artifactory time send to lexicon are CP time referenced
+export JOB_STARTTIME=$(date -d@$CP_START -Ins)
+echo &quot;JOB_STARTTIME:&quot; $JOB_STARTTIME
+
+export JOB_FINISHTIME=$(date -d@$CP_STOP -Ins)
+echo &quot;JOB_FINISHTIME:&quot; $JOB_FINISHTIME
+
+export DT=$(date -d@$CPT +&quot;%y%m%d-%H%M&quot;)
+echo &quot;DT:&quot; $DT
+
+
+mkdir -p $LogsDir
+rm -rf $LogsDir/*
+./ai.exp  -a $STPIPADDRESS -u $STPUSERNAME -p $STPPASSWORD -o makecoplog2 -d $LogsDir
+#./ai.exp -a $STPIPADDRESS -u $STPUSERNAME -p $STPPASSWORD -o makecoplog -d $LogsDir
+#./ai.exp -a $STPIPADDRESS -u $STPUSERNAME -p $STPPASSWORD -o makecplog -d $LogsDir
+#./ai.exp -a $STPIPADDRESS -u $STPUSERNAME -p $STPPASSWORD -o mktrapglog -d $LogsDir
+
+
+pushd $LogsDir
+#export DT=`date +%y%m%d-%H%M`
+export DT=$(date -d@$CPT +&quot;%y%m%d-%H%M&quot;)
+
+#mv cplogs.txt cplogs_$DT.txt
+#tar cvfz cplogs_$DT.tar.gz cplogs_$DT.txt
+#rm cplogs_$DT.txt
+
+mv cop.tar.gz cop_$DT.tar.gz
+
+popd
+
+
+./Upload_Logs_Artifactory.py $LogsDir $TESTRESULT $TESTNAME $TESTNUMBER $JOB_STARTTIME $JOB_FINISHTIME
+
+#rm -rf $LogsDir</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.plugins.testng.Publisher plugin="testng-plugin@1.15">
+      <reportFilenamePattern>**/testng-results.xml</reportFilenamePattern>
+      <escapeTestDescp>true</escapeTestDescp>
+      <escapeExceptionMsg>true</escapeExceptionMsg>
+      <failureOnFailedTestConfig>false</failureOnFailedTestConfig>
+      <showFailedBuilds>false</showFailedBuilds>
+      <unstableSkips>100</unstableSkips>
+      <unstableFails>0</unstableFails>
+      <failedSkips>100</failedSkips>
+      <failedFails>100</failedFails>
+      <thresholdMode>2</thresholdMode>
+    </hudson.plugins.testng.Publisher>
+  </publishers>
+  <buildWrappers>
+    <hudson.plugins.ansicolor.AnsiColorBuildWrapper plugin="ansicolor@0.5.3">
+      <colorMapName>xterm</colorMapName>
+    </hudson.plugins.ansicolor.AnsiColorBuildWrapper>
+    <EnvInjectBuildWrapper plugin="envinject@2.1.6">
+      <info>
+        <propertiesContent>JCAT_CLASSPATH_DEFAULT=/proj/AXE_MC/axejcat/builds/axe-jcat-tests-with-dependencies.jar
+JCAT_LOG_DIR=$WORKSPACE/$BUILD_NUMBER
+
+ScriptDir=/proj/AXE_MC/AI4LOGS/AI_MSCAXE/scripts
+#LogsDir=/proj/AXE_MC/AI4LOGS/AI_MSCAXE/logs
+LogsDir=$WORKSPACE/$BUILD_NUMBER/logs</propertiesContent>
+        <secureGroovyScript plugin="script-security@1.48">
+          <script>import jenkins.model.*
+import java.util.regex.*
+import hudson.model.*
+import java.text.SimpleDateFormat 
+import java.util.Date
+import java.lang.StringBuffer
+
+def map = [:]
+
+currentBuild.actions.each { action -&gt;
+    if(action.hasProperty(&quot;causes&quot;)) {
+        action.causes.each { cause -&gt;
+            if(cause instanceof hudson.model.Cause$UpstreamCause &amp;&amp; cause.hasProperty(&quot;shortDescription&quot;) &amp;&amp; cause.shortDescription.contains(&quot;Started by upstream project&quot;)) {
+                map.UPSTREAM_BUILD_URL = currentBuild.environment.JENKINS_URL + cause.upstreamUrl + cause.upstreamBuild
+                map.UPSTREAM_BUILD = cause.upstreamRun
+                currentBuild.description = &apos;Upstream: &lt;a href=&quot;&apos; + map.UPSTREAM_BUILD_URL + &apos;&quot;&gt;&apos; + map.UPSTREAM_BUILD + &apos;&lt;/a&gt;&apos;
+            }
+        }
+    }
+}
+
+String frombuild = map.UPSTREAM_BUILD
+println frombuild
+String jobName = frombuild.substring(0, frombuild.lastIndexOf(&quot; #&quot;))
+int jobNumber = frombuild.substring(frombuild.lastIndexOf(&quot; #&quot;) + 2).toInteger()
+
+map.TESTNAME = jobName 
+map.TESTNUMBER = jobNumber 
+
+def instance = Jenkins.getInstance()
+def jenkins = Jenkins.getInstance()
+def job = jenkins.getItem(jobName)
+
+println &quot;Job type: ${job.getClass()}&quot;
+println &quot;Is building: ${job.isBuilding()}&quot;
+println &quot;Is in queue: ${job.isInQueue()}&quot;
+println &quot;Last successfull build: ${job.getLastSuccessfulBuild()}&quot;
+println &quot;Last failed build: ${job.getLastFailedBuild()}&quot;
+println &quot;Last build: ${job.getLastBuild()}&quot;
+println &quot;All builds: ${job.getBuilds().collect{ it.getNumber()}}&quot;
+
+def run = job.getBuildByNumber(jobNumber )
+println   &quot;results ${run.getResult()}   &quot;
+
+if ( run.getResult() == Result.SUCCESS) { 
+  map.TESTRESULT = &quot;SUCCEEDED&quot; 
+}
+else { 
+  map.TESTRESULT = &quot;FAILED&quot; 
+}
+
+println  map.TESTRESULT
+//def formattime =&quot;yyyy-MM-dd&apos;T&apos;HH:mm:ss.SSSZ&quot;
+def formattime =&quot;yyyy-MM-dd&apos;T&apos;HH:mm:ss.SSSXXX&quot;
+
+dt = new Date()
+
+def ct = dt.format(formattime )
+println ct
+map.STOPTIMETRIGGERJOB =ct
+
+StringBuffer s1= new StringBuffer(ct);
+s1.insert(ct.length() - 6, &quot;000&quot;)
+String currentTime = s1.toString();
+println currentTime 
+
+def jobstartime = run.getStartTimeInMillis()
+def st = new Date(jobstartime )
+String jst= st.format(formattime )
+println jst
+map.STARTTIMETRIGGERJOB =jst
+
+
+def ap_logdate =&quot;yyyyMMdd&quot;
+def ap_logtime =&quot;HHmm&quot;
+map.AP_STOPDATE = dt.format(ap_logdate )
+map.AP_STOPTIME = dt.format(ap_logtime )
+
+map.AP_STARTDATE =  st.format(ap_logdate )
+map.AP_STARTTIME =  st.format(ap_logtime )
+
+
+
+StringBuffer s2= new StringBuffer(jst);
+s2.insert(jst.length() - 6, &quot;000&quot;)
+String startTime= s2.toString();
+println startTime
+
+map.JOB_STARTTIME = startTime
+map.JOB_FINISHTIME = currentTime 
+
+
+def map1 = run.getEnvVars()
+println map1.seleziona
+
+map.STPIPADDRESS = map1.STPIPADDRESS
+map.STPUSERNAME  = map1.STPUSERNAME
+map.STPPASSWORD = map1.STPPASSWORD
+map.STPROOTPASSWD = map1.STPROOTPASSWD
+map.APOSTYPE = map1.APOSTYPE
+map.CLHLS= map1.CLHLS
+
+return map
+</script>
+          <sandbox>false</sandbox>
+        </secureGroovyScript>
+        <loadFilesFromMaster>false</loadFilesFromMaster>
+      </info>
+    </EnvInjectBuildWrapper>
+  </buildWrappers>
+</project>

@@ -1,0 +1,73 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<com.tikal.jenkins.plugins.multijob.MultiJobProject plugin="jenkins-multijob-plugin@1.31">
+  <actions/>
+  <description>Sample Project to verify running Plex JCAT tests for AI study</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.collabnet.actionhub.Tagger plugin="collabnet@2.0.6">
+      <globalOverride>false</globalOverride>
+      <manual>false</manual>
+      <workitem>false</workitem>
+      <build>false</build>
+      <review>false</review>
+      <commit>false</commit>
+      <custom>false</custom>
+      <customMessages></customMessages>
+    </hudson.plugins.collabnet.actionhub.Tagger>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.29">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <org.jvnet.jenkins.plugins.nodelabelparameter.NodeParameterDefinition plugin="nodelabelparameter@1.7.2">
+          <name>RUN_NODE</name>
+          <description></description>
+          <allowedSlaves>
+            <string>AI_TP114-2_DUAL_LINUX</string>
+            <string>AI_TP114-3_DUAL_LINUX</string>
+          </allowedSlaves>
+          <defaultSlaves>
+            <string>AI_TP114-3_DUAL_LINUX</string>
+          </defaultSlaves>
+          <triggerIfResult>multiSelectionDisallowed</triggerIfResult>
+          <allowMultiNodeSelection>false</allowMultiNodeSelection>
+          <triggerConcurrentBuilds>false</triggerConcurrentBuilds>
+          <ignoreOfflineNodes>false</ignoreOfflineNodes>
+          <nodeEligibility class="org.jvnet.jenkins.plugins.nodelabelparameter.node.AllNodeEligibility"/>
+        </org.jvnet.jenkins.plugins.nodelabelparameter.NodeParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <hudson.plugins.throttleconcurrents.ThrottleJobProperty plugin="throttle-concurrents@2.0.1">
+      <maxConcurrentPerNode>0</maxConcurrentPerNode>
+      <maxConcurrentTotal>0</maxConcurrentTotal>
+      <categories class="java.util.concurrent.CopyOnWriteArrayList"/>
+      <throttleEnabled>false</throttleEnabled>
+      <throttleOption>project</throttleOption>
+      <limitOneJobWithMatchingParams>false</limitOneJobWithMatchingParams>
+      <paramsToUseForLimit></paramsToUseForLimit>
+    </hudson.plugins.throttleconcurrents.ThrottleJobProperty>
+    <de.pellepelster.jenkins.walldisplay.WallDisplayJobProperty plugin="jenkinswalldisplay@0.6.34"/>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <canRoam>true</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>java -classpath /home/zsabsre/axe-jcat-tests-with-dependencies.jar -Dconf=apzst.conf.DummyConfig -Dipap1=$STPIPADDRESS -Dexpertuser=$STPUSERNAME -Dexpertpass=$STPPASSWORD -DRootPassword=$STPROOTPASSWD -Dapostype=$APOSTYPE -Duseproxy=true -Dlogging=&quot;axedb&quot; -Dlogdir=/home/zsabsre/today org.testng.TestNG /home/zsabsre/suitefiles/DualCP_DPSWI.xml</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers/>
+  <buildWrappers/>
+  <pollSubjobs>false</pollSubjobs>
+</com.tikal.jenkins.plugins.multijob.MultiJobProject>

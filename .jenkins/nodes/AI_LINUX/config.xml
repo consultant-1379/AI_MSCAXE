@@ -1,0 +1,24 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<slave>
+  <name>AI_LINUX</name>
+  <description>AI Pink Floyd Team jenkins</description>
+  <remoteFS>/proj/AXE_MC/AI4LOGS/jenkins/data/slaves/JCAT_AI_TP102_DUAL_LINUX</remoteFS>
+  <numExecutors>1</numExecutors>
+  <mode>EXCLUSIVE</mode>
+  <retentionStrategy class="hudson.slaves.RetentionStrategy$Demand">
+    <inDemandDelay>0</inDemandDelay>
+    <idleDelay>2</idleDelay>
+  </retentionStrategy>
+  <launcher class="hudson.plugins.sshslaves.SSHLauncher" plugin="ssh-slaves@1.28.1">
+    <host>10.210.151.187</host>
+    <port>22</port>
+    <credentialsId>1db3ad80-fd38-46ec-bd85-5cf4a59e2f05</credentialsId>
+    <launchTimeoutSeconds>210</launchTimeoutSeconds>
+    <maxNumRetries>10</maxNumRetries>
+    <retryWaitTime>15</retryWaitTime>
+    <sshHostKeyVerificationStrategy class="hudson.plugins.sshslaves.verifiers.NonVerifyingKeyVerificationStrategy"/>
+    <tcpNoDelay>true</tcpNoDelay>
+  </launcher>
+  <label>JCAT_AI_DUAL_LINUX</label>
+  <nodeProperties/>
+</slave>

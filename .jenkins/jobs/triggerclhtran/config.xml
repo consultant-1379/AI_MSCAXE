@@ -1,0 +1,155 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.collabnet.actionhub.Tagger plugin="collabnet@2.0.6">
+      <globalOverride>false</globalOverride>
+      <manual>false</manual>
+      <workitem>false</workitem>
+      <build>false</build>
+      <review>false</review>
+      <commit>false</commit>
+      <custom>false</custom>
+      <customMessages></customMessages>
+    </hudson.plugins.collabnet.actionhub.Tagger>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.29">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.ChoiceParameterDefinition>
+          <name>seleziona</name>
+          <description></description>
+          <choices class="java.util.Arrays$ArrayList">
+            <a class="string-array">
+              <string>true</string>
+              <string>false</string>
+            </a>
+          </choices>
+        </hudson.model.ChoiceParameterDefinition>
+        <hudson.model.ChoiceParameterDefinition>
+          <name>TESTDURATION</name>
+          <description></description>
+          <choices class="java.util.Arrays$ArrayList">
+            <a class="string-array">
+              <string>600</string>
+              <string>5</string>
+              <string>300</string>
+              <string>1200</string>
+              <string>2400</string>
+              <string>3600</string>
+              <string>14400</string>
+              <string>28800</string>
+            </a>
+          </choices>
+        </hudson.model.ChoiceParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>CLHLS</name>
+          <description></description>
+          <defaultValue>old</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.ChoiceParameterDefinition>
+          <name>NODE</name>
+          <description></description>
+          <choices class="java.util.Arrays$ArrayList">
+            <a class="string-array">
+              <string>AI_TP114-3_DUAL_LINUX</string>
+              <string>AI_TP114-2_DUAL_LINUX</string>
+            </a>
+          </choices>
+        </hudson.model.ChoiceParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <hudson.plugins.throttleconcurrents.ThrottleJobProperty plugin="throttle-concurrents@2.0.1">
+      <maxConcurrentPerNode>0</maxConcurrentPerNode>
+      <maxConcurrentTotal>0</maxConcurrentTotal>
+      <categories class="java.util.concurrent.CopyOnWriteArrayList"/>
+      <throttleEnabled>false</throttleEnabled>
+      <throttleOption>project</throttleOption>
+      <limitOneJobWithMatchingParams>false</limitOneJobWithMatchingParams>
+      <paramsToUseForLimit></paramsToUseForLimit>
+    </hudson.plugins.throttleconcurrents.ThrottleJobProperty>
+    <de.pellepelster.jenkins.walldisplay.WallDisplayJobProperty plugin="jenkinswalldisplay@0.6.34"/>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <canRoam>true</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>
+
+sleep $TESTDURATION
+
+# rm env.properties
+
+if $seleziona
+then 
+exit
+else
+exit 39
+fi
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers/>
+  <buildWrappers>
+    <EnvInjectBuildWrapper plugin="envinject@2.1.6">
+      <info>
+        <secureGroovyScript plugin="script-security@1.48">
+          <script>import jenkins.*
+import jenkins.model.*
+
+if (binding.variables.containsKey(&apos;NODE&apos;)) {
+    println binding[&apos;NODE&apos;]
+}
+
+switch(binding[&apos;NODE&apos;]) {
+  case &quot;AI_TP114-2_DUAL_LINUX&quot;:
+    result = [
+        STPIPADDRESS: &quot;10.126.21.22&quot;,
+        STPUSERNAME: &quot;ts_comem&quot;,
+        STPPASSWORD: &quot;Sommar.2022&quot;,
+        STPROOTPASSWD: &quot;Administrator1@&quot;,
+        APOSTYPE: &quot;LINUX&quot;
+     ]
+    break
+  case &quot;AI_TP114-3_DUAL_LINUX&quot;:
+    result = [
+        STPIPADDRESS: &quot;10.126.21.38&quot;,
+        STPUSERNAME: &quot;ts_test&quot;,
+        STPPASSWORD: &quot;Year.2022&quot;,
+        STPROOTPASSWD: &quot;Administrator1@&quot;,
+        APOSTYPE: &quot;LINUX&quot;
+      ]
+    break
+  default:
+    result = &quot;node not defined&quot;
+    break
+
+echo &quot;${result}&quot;
+
+return ${result}
+
+}</script>
+          <sandbox>false</sandbox>
+        </secureGroovyScript>
+        <loadFilesFromMaster>false</loadFilesFromMaster>
+      </info>
+    </EnvInjectBuildWrapper>
+  </buildWrappers>
+</project>
